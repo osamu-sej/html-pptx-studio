@@ -992,11 +992,14 @@ await step("描画モードのロック（右クリック）; 既定の図形・
   await tab("挿入");
   await ribbonBtn("図形");
   await page.locator('.rb-pop .rb-gallery button[title="直線"]').first().click();
+  // Drawing starts only once the tool is armed (a slow runner may still be closing the gallery).
+  await page.waitForSelector(".ed-drawing");
+  const count = (await slide()).elements.length;
   await page.mouse.move(...(await stageAt(900, 760)));
   await page.mouse.down();
   await page.mouse.move(...(await stageAt(1300, 760)), { steps: 6 });
   await page.mouse.up();
-  await page.waitForTimeout(300);
+  await page.waitForFunction((n) => window.__hpptx.slide().elements.length > n, count, { timeout: 5000 });
   const line = (await slide()).elements.at(-1);
   assert(line.kind === "line", `a line: ${line.kind}`);
   await page.evaluate((id) => Object.assign(window.__hpptx.slide().elements.find((o) => o.id === id), { stroke: "#7f7f7f", strokeW: 6 }), line.id);
