@@ -64,7 +64,7 @@ await step("design dialog: live previews of every backdrop, kinetic and emphasis
   await page.click("#designBtn");
   await page.waitForFunction(() => document.querySelectorAll("#backdropGrid .motion-card").length === 13 && document.querySelectorAll("#kineticGrid .motion-card").length === 10 && document.querySelectorAll("#emphasisGrid .motion-card").length === 6);
   const options = await page.evaluate(() => ["transitionSelect", "entranceSelect", "hoverSelect"].map((id) => document.getElementById(id).options.length));
-  if (options.join() !== "12,10,6") throw new Error(`the deck's motion menus are incomplete: ${options}`);
+  if (options.join() !== "12,12,6") throw new Error(`the deck's motion menus are incomplete: ${options}`);
   await page.locator("#backdropGrid").scrollIntoViewIfNeeded();
   await page.waitForTimeout(1600);
   await shot("design-backdrops");

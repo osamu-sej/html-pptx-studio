@@ -220,9 +220,10 @@ test("more motion types: entrances, hovers, emphasis, spotlight and photo motion
   assert.ok(cards.querySelector(".hs-em"), "the phrase to emphasise is marked");
   const own = E.render({ ...slides[1], entrance: "drop", emphasis: "box" }, { deck, index: 1, mode: "present" });
   assert.equal(own.dataset.entrance, "drop", "a slide may pick its own entrance");
+  assert.equal(E.render({ ...slides[1], entrance: "spin" }, { deck, index: 1, mode: "present" }).dataset.entrance, "spin", "the showpiece entrances are entrances");
   assert.equal(own.dataset.emphasis, "box");
   assert.equal(E.render({ ...slides[1], entrance: "none" }, { deck, index: 1, mode: "present" }).dataset.entrance, "none");
-  const unknown = E.render({ ...slides[1], entrance: "spin", emphasis: "sparkle" }, { deck: deckOf(slides, { motion: { hover: "wobble" } }), index: 1, mode: "present" });
+  const unknown = E.render({ ...slides[1], entrance: "tornado", emphasis: "sparkle" }, { deck: deckOf(slides, { motion: { hover: "wobble" } }), index: 1, mode: "present" });
   assert.equal(unknown.dataset.entrance, "rise", "unknown values fall back to the defaults");
   assert.equal(unknown.dataset.emphasis, "marker");
   assert.equal(unknown.dataset.hover, "lift");

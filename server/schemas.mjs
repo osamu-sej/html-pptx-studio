@@ -50,7 +50,7 @@ export const BACKDROP_KINDS = ["particles", "waves", "grid", "orbits", "gradient
 export const kineticSchema = z.enum(["auto", "none", ...KINETIC_STYLES]);
 export const backdropSchema = z.enum(["auto", "none", ...BACKDROP_KINDS]);
 // How a slide's parts arrive, how items answer the mouse, how the **phrase** is set off, and how slides change.
-export const ENTRANCES = ["rise", "fade", "blur", "pop", "slide", "zoom", "flip", "wipe", "drop"];
+export const ENTRANCES = ["rise", "fade", "blur", "pop", "slide", "zoom", "flip", "wipe", "drop", "spin", "swirl"];
 export const HOVERS = ["lift", "focus", "tilt", "glow", "zoom"];
 export const EMPHASES = ["marker", "underline", "circle", "box", "glow", "none"];
 export const TRANSITIONS = ["fade", "slide", "zoom", "morph", "wipe", "circle", "push", "flip", "dive", "blinds", "curtain", "none"];

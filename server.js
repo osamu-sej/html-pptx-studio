@@ -31,6 +31,7 @@ import { varietyIssues } from "./public/layout-looks.mjs";
 import { createRooms } from "./server/rooms.mjs";
 import { buildTranslatePrompt, checkTranslation, translateRequestSchema, translateResultSchema } from "./server/translate.mjs";
 import { buildSynonymsPrompt, checkSynonyms, synonymsRequestSchema, synonymsResultSchema } from "./server/synonyms.mjs";
+import { stageShowpieces } from "./server/showpieces.mjs";
 import {
   chatRequestSchema,
   chatResultSchema,
@@ -457,7 +458,9 @@ function startDeckJob(session, input, prompt = buildDeckPrompt(input), source = 
       const plainIssues = variety === null || layoutsAsked ? [] : varietyIssues(deck.slideData);
       const plain = plainIssues.length > variety && attempt <= 2 ? plainIssues : [];
       if (plain.length) layoutsAsked = true;
-      const result = { deck: { ...deck, settings: input.settings }, issues: [...overflow, ...unsourced] };
+      // 見せ場: the moments the AI left still get motion only HTML can give (spin, swirl, big words, a moving backdrop).
+      const staged = stageShowpieces(deck.slideData);
+      const result = { deck: { ...deck, slideData: staged.slides, settings: input.settings }, issues: [...overflow, ...unsourced] };
       if ((overflow.length || unsourced.length || plain.length) && attempt <= 2) {
         const retry = [overflow.length ? buildRepairPrompt({ issues: overflow, slides: deck.slideData }) : "", ...factRepairLines(unsourced, deck.slideData),
           ...(plain.length ? varietyRepairLines(plain) : []),
