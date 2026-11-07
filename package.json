@@ -1,6 +1,6 @@
 {
   "name": "html-pptx-studio",
-  "version": "2.5.0",
+  "version": "2.5.1",
   "private": true,
   "type": "module",
   "description": "AI-built slide decks as moving HTML presentations that carry over to PowerPoint: outline, edit like PowerPoint, talk to the AI, present, and export to HTML or an editable .pptx.",

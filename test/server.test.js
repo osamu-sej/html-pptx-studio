@@ -867,6 +867,22 @@ test("an existing PowerPoint is imported into an editable deck and its text can 
   }
 });
 
+test("PowerPoint 出力 as a job: only its owner sees it, an empty deck is refused, a stop needs the same origin", async () => {
+  const server = await startServer();
+  try {
+    await server.request("/");
+    const empty = await server.postJson("/api/export/pptx/jobs", { deck: { slides: [] } });
+    assert.equal(empty.status, 400);
+    const unknown = await server.request("/api/export/pptx/jobs/00000000-0000-4000-8000-000000000000");
+    assert.equal(unknown.status, 404);
+    assert.match((await unknown.json()).error, /もう一度/);
+    const file = await server.request("/api/export/pptx/jobs/00000000-0000-4000-8000-000000000000/file");
+    assert.equal(file.status, 404);
+  } finally {
+    await server.stop();
+  }
+});
+
 test("a long deck is written a few slides at a time: from an outline, or when an answer does not fit", async () => {
   const deck = shortDeck(8);
   const part = (from, to) => ({ ...deck, slideData: deck.slideData.slice(from - 1, to) });
@@ -910,6 +926,17 @@ test("a long deck is written a few slides at a time: from an outline, or when an
     assert.match(sent[2], /# 回答の形式/);
     assert.match(sent[3], /5〜8枚目だけ/);
     assert.doesNotMatch(sent[3], /# 回答の形式/);
+  });
+  // Codex reports a cut-off only as "Reconnecting... n/5": the second in one turn of a deck is taken as one.
+  await withFakeCodex([{ __reconnects: true }, deck], async (server, prompts, turns) => {
+    const started = await (await server.postJson("/api/decks", { brief: "テスト", settings: { slideCount: 8, textDensity: "standard" } })).json();
+    const job = await waitForJob(server, started.jobId);
+    assert.equal(job.status, "completed", job.error);
+    assert.equal(job.deck.slideData.length, 8);
+    const sentTurns = await turns();
+    assert.equal(sentTurns.length, 2);
+    assert.deepEqual(sentTurns.map((t) => t.schema), [true, false]);
+    assert.notEqual(sentTurns[1].thread, sentTurns[0].thread);
   });
   // A part that still does not fit is asked again two slides at a time in a new thread, with the slides already
   // written; a whole deck in a part keeps its own slides; a part with a broken slide is asked again.

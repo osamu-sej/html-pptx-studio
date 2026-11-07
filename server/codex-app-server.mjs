@@ -925,6 +925,7 @@ export class CodexSlideServer extends EventEmitter {
     job.finalText = null;
     job.lastPrompt = text;
     job.turnError = null;
+    job.reconnects = 0;
     // Without the output format, the shape it asks for goes with the first request of the thread.
     const withFormat = job.noSchema && job.plan.outputSchema && !job.formatSent;
     if (withFormat) job.formatSent = true;
@@ -1045,10 +1046,14 @@ export class CodexSlideServer extends EventEmitter {
       }
       case "error":
         console.warn(`[codex] job ${job.id} (${job.kind ?? "deck"}) error${params.willRetry ? " (Codex retries)" : ""}: ${params.error?.message ?? ""} ${JSON.stringify(params.error?.codexErrorInfo ?? "")}`.slice(0, 600));
-        if (params.willRetry && tooLong(params.error) && job.plan.outputSchema) {
+        // Codex says only "Reconnecting... n/5" when an answer is cut off at the output limit (the reason comes after
+        // all its tries). A dropped stream twice in one turn of a long answer is that: do not wait for the rest.
+        if (params.willRetry && errorKind(params.error) === "responseStreamDisconnected") job.reconnects = (job.reconnects ?? 0) + 1;
+        const cutOff = tooLong(params.error) || (job.reconnects >= 2 && ["deck", "revise", "chat", "variants"].includes(job.kind ?? "deck"));
+        if (params.willRetry && cutOff && job.plan.outputSchema) {
           // Cut off at the output limit: Codex would send the same request again, which is cut off the same way.
           this.#abandonTurn(job);
-          this.#failTurn(job, params.error);
+          this.#failTurn(job, tooLong(params.error) ? params.error : { message: `回答が途中で切れました（max_output_tokens と判断: ${params.error?.message ?? ""}）`, codexErrorInfo: params.error?.codexErrorInfo });
           break;
         }
         if (params.willRetry) {
