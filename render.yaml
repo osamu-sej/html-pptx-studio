@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: html-pptx-studio
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /healthz
+    autoDeployTrigger: commit
+    envVars:
+      - key: NODE_VERSION
+        value: 22.16.0
+      # Share one Codex login with a team: everyone who knows the passcode can use the AI.
+      - key: STUDIO_PASSCODE
+        sync: false
+      # Optional: the contents of ~/.codex/auth.json (or base64 of it) so a redeploy keeps the login.
+      - key: CODEX_AUTH_JSON
+        sync: false

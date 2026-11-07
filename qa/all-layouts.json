@@ -1,0 +1,956 @@
+{
+  "deckTitle": "全レイアウト検証",
+  "audience": "役員",
+  "slideData": [
+    {
+      "type": "title",
+      "title": "全レイアウト検証デッキ",
+      "subtitle": "全レイアウトの描画確認",
+      "date": "2026年9月"
+    },
+    {
+      "type": "section",
+      "title": "第1章 現状",
+      "takeaway": "まず現状を共有する"
+    },
+    {
+      "type": "content",
+      "title": "本文",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "points": [
+        "背景：人手不足が続く",
+        "課題：作業が属人化している",
+        "方針：仕組みで標準化する"
+      ]
+    },
+    {
+      "type": "content",
+      "title": "本文2列",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "twoColumn": true,
+      "points": [
+        "項目A",
+        "項目B",
+        "項目C",
+        "項目D"
+      ]
+    },
+    {
+      "type": "agenda",
+      "title": "アジェンダ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        "背景：なぜ今か",
+        "現状：何が起きているか",
+        "提案：何をするか"
+      ]
+    },
+    {
+      "type": "compare",
+      "title": "対比",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "leftTitle": "現状",
+      "rightTitle": "目指す姿",
+      "leftItems": [
+        "紙で管理"
+      ],
+      "rightItems": [
+        "端末で管理"
+      ]
+    },
+    {
+      "type": "beforeAfter",
+      "title": "前後",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "leftTitle": "Before",
+      "rightTitle": "After",
+      "leftItems": [
+        "手作業"
+      ],
+      "rightItems": [
+        "自動化"
+      ]
+    },
+    {
+      "type": "process",
+      "title": "プロセス",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "steps": [
+        "準備：目的を共有",
+        "実行：手順を実施",
+        "確認：結果を振り返る"
+      ]
+    },
+    {
+      "type": "processList",
+      "title": "工程リスト",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "steps": [
+        "準備",
+        "実行",
+        "確認",
+        "改善",
+        "定着",
+        "展開"
+      ]
+    },
+    {
+      "type": "flowChart",
+      "title": "フロー",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "flows": [
+        {
+          "steps": [
+            "受付",
+            "確認",
+            "承認"
+          ]
+        },
+        {
+          "steps": [
+            "発注",
+            "納品"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "timeline",
+      "title": "タイムライン",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "milestones": [
+        {
+          "label": "開始",
+          "date": "4月",
+          "state": "done"
+        },
+        {
+          "label": "展開",
+          "date": "7月",
+          "state": "next"
+        },
+        {
+          "label": "定着",
+          "date": "10月"
+        }
+      ]
+    },
+    {
+      "type": "diagram",
+      "title": "レーン図",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "lanes": [
+        {
+          "title": "店舗",
+          "items": [
+            "発注",
+            "検品"
+          ]
+        },
+        {
+          "title": "本部",
+          "items": [
+            "分析"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "cycle",
+      "title": "サイクル",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "centerText": "品質向上",
+      "items": [
+        {
+          "label": "計画"
+        },
+        {
+          "label": "実行"
+        },
+        {
+          "label": "評価"
+        },
+        {
+          "label": "改善"
+        }
+      ]
+    },
+    {
+      "type": "cards",
+      "title": "カード",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "headerCards",
+      "title": "見出しカード",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点4",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "bulletCards",
+      "title": "要点カード",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "table",
+      "title": "表",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "headers": [
+        "項目",
+        "現状",
+        "目標"
+      ],
+      "rows": [
+        [
+          "作業時間",
+          "120h",
+          "80h"
+        ],
+        [
+          "廃棄率",
+          "3.0%",
+          "2.5%"
+        ]
+      ]
+    },
+    {
+      "type": "quote",
+      "title": "引用",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "text": "現場の声を仕組みに変える",
+      "author": "店舗オーナー"
+    },
+    {
+      "type": "kpi",
+      "title": "KPI",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "label": "削減時間",
+          "value": "120h",
+          "change": "月間",
+          "status": "good"
+        },
+        {
+          "label": "短縮率",
+          "value": "42%",
+          "status": "good"
+        }
+      ]
+    },
+    {
+      "type": "faq",
+      "title": "FAQ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "q": "費用は？",
+          "a": "既存端末を活用する"
+        },
+        {
+          "q": "期間は？",
+          "a": "3か月で定着する"
+        }
+      ]
+    },
+    {
+      "type": "statsCompare",
+      "title": "数値比較",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "leftTitle": "前",
+      "rightTitle": "後",
+      "stats": [
+        {
+          "label": "時間",
+          "leftValue": "95分",
+          "rightValue": "54分",
+          "trend": "down"
+        }
+      ]
+    },
+    {
+      "type": "triangle",
+      "title": "トライアングル",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "pyramid",
+      "title": "ピラミッド",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "levels": [
+        {
+          "title": "理念",
+          "description": "目指す姿"
+        },
+        {
+          "title": "戦略",
+          "description": "重点施策"
+        },
+        {
+          "title": "実行",
+          "description": "日々の行動"
+        }
+      ]
+    },
+    {
+      "type": "stepUp",
+      "title": "ステップアップ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "imageText",
+      "title": "グラフ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "image": {
+        "chartType": "bar",
+        "data": {
+          "title": "部署別",
+          "items": [
+            {
+              "label": "営業",
+              "value": 78
+            },
+            {
+              "label": "企画",
+              "value": 66
+            }
+          ]
+        }
+      },
+      "points": [
+        "営業が最も高い"
+      ]
+    },
+    {
+      "type": "imageText",
+      "title": "複数系列",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "image": {
+        "chartType": "multi-line",
+        "data": {
+          "xAxisLabels": [
+            "4月",
+            "5月"
+          ],
+          "series": [
+            {
+              "label": "A",
+              "values": [
+                1,
+                2
+              ]
+            },
+            {
+              "label": "B",
+              "values": [
+                2,
+                3
+              ]
+            }
+          ]
+        }
+      },
+      "points": [
+        "両方とも増加"
+      ]
+    },
+    {
+      "type": "imageText",
+      "title": "積み上げ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "image": {
+        "chartType": "stacked-bar",
+        "data": {
+          "legendLabels": [
+            "A",
+            "B"
+          ],
+          "barData": [
+            {
+              "label": "4月",
+              "values": [
+                1,
+                2
+              ]
+            },
+            {
+              "label": "5月",
+              "values": [
+                2,
+                2
+              ]
+            }
+          ]
+        }
+      },
+      "points": [
+        "構成比が変化"
+      ]
+    },
+    {
+      "type": "imageText",
+      "title": "ドーナツ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "image": {
+        "chartType": "donut",
+        "data": {
+          "items": [
+            {
+              "label": "A",
+              "value": 60
+            },
+            {
+              "label": "B",
+              "value": 40
+            }
+          ]
+        }
+      },
+      "points": [
+        "Aが過半"
+      ]
+    },
+    {
+      "type": "grid2x2",
+      "title": "2×2",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点4",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "headerTwoColumn",
+      "title": "2列",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "headerThreeSummary",
+      "title": "3列まとめ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ],
+      "summary": "3要素をセットで提供する"
+    },
+    {
+      "type": "funnel",
+      "title": "ファネル",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "levels": [
+        {
+          "title": "認知"
+        },
+        {
+          "title": "来店"
+        },
+        {
+          "title": "購入"
+        }
+      ]
+    },
+    {
+      "type": "venn",
+      "title": "ベン図",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "gantt",
+      "title": "ガント",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "periods": [
+        "4月",
+        "5月",
+        "6月",
+        "7月"
+      ],
+      "items": [
+        {
+          "title": "設計",
+          "desc": "要件",
+          "start": 0,
+          "span": 1
+        },
+        {
+          "title": "開発",
+          "start": 1,
+          "span": 2
+        }
+      ]
+    },
+    {
+      "type": "orgChart",
+      "title": "組織図",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "root": "責任者",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "checklist",
+      "title": "チェック",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "承認",
+          "desc": "確認済み",
+          "done": true
+        },
+        {
+          "title": "検査",
+          "desc": "未完了"
+        }
+      ]
+    },
+    {
+      "type": "matrix",
+      "title": "マトリクス",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "xLabel": "難易度",
+      "yLabel": "重要度",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点4",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "roadmap",
+      "title": "ロードマップ",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "Phase1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "Phase2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "Phase3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "dashboard",
+      "title": "ダッシュボード",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "label": "売上",
+          "value": "102%"
+        },
+        {
+          "label": "客数",
+          "value": "98%"
+        }
+      ],
+      "image": {
+        "chartType": "line",
+        "data": {
+          "items": [
+            {
+              "label": "4月",
+              "value": 100
+            },
+            {
+              "label": "5月",
+              "value": 102
+            }
+          ]
+        }
+      }
+    },
+    {
+      "type": "swot",
+      "title": "SWOT",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点4",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ]
+    },
+    {
+      "type": "executiveSummary",
+      "title": "サマリー",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "conclusion": "全店展開を提案する",
+      "items": [
+        {
+          "title": "要点1",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点2",
+          "desc": "現場の作業を減らし、判断を早める"
+        },
+        {
+          "title": "要点3",
+          "desc": "現場の作業を減らし、判断を早める"
+        }
+      ],
+      "action": "予算承認を依頼する"
+    },
+    {
+      "type": "waterfall",
+      "title": "月間削減時間の内訳",
+      "takeaway": "資料作成が削減の**約半分**を占める",
+      "unit": "時間",
+      "items": [
+        {
+          "label": "資料作成",
+          "value": 150
+        },
+        {
+          "label": "議事録",
+          "value": 90
+        },
+        {
+          "label": "データ集計",
+          "value": 80
+        },
+        {
+          "label": "手戻り増",
+          "value": -20
+        },
+        {
+          "label": "合計",
+          "value": 300,
+          "total": true
+        }
+      ]
+    },
+    {
+      "type": "logicTree",
+      "title": "部門差の要因分解",
+      "takeaway": "差の主因は**業務との接点**と**相談先**の2点",
+      "root": "活用率の部門差（最大3倍）",
+      "branches": [
+        {
+          "title": "業務との接点が少ない",
+          "items": [
+            "定型業務の棚卸しが未実施",
+            "研修例と自部門業務が遠い"
+          ],
+          "highlight": true
+        },
+        {
+          "title": "相談先がない",
+          "items": [
+            "部内に推進役が不在",
+            "つまずきが放置され離脱する"
+          ],
+          "highlight": true
+        },
+        {
+          "title": "成功例が共有されない",
+          "items": [
+            "成功例が個人の中に留まる"
+          ]
+        }
+      ]
+    },
+    {
+      "type": "imageText",
+      "title": "切り口で並び替え",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "source": "社内集計 2026年",
+      "image": {
+        "chartType": "rank",
+        "data": {
+          "title": "部門別の削減時間",
+          "unit": "時間",
+          "highlight": "営業",
+          "views": [
+            {
+              "label": "月合計",
+              "items": [
+                {
+                  "label": "営業",
+                  "value": 320
+                },
+                {
+                  "label": "企画",
+                  "value": 410
+                },
+                {
+                  "label": "総務",
+                  "value": 150
+                }
+              ]
+            },
+            {
+              "label": "1人あたり",
+              "items": [
+                {
+                  "label": "営業",
+                  "value": 8
+                },
+                {
+                  "label": "企画",
+                  "value": 6
+                },
+                {
+                  "label": "総務",
+                  "value": 5
+                }
+              ]
+            }
+          ]
+        }
+      },
+      "points": [
+        "1人あたりでは営業が最大"
+      ]
+    },
+    {
+      "type": "imageText",
+      "title": "前後の差",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "image": {
+        "chartType": "shift",
+        "data": {
+          "title": "1件あたりの時間",
+          "unit": "分",
+          "beforeLabel": "前",
+          "afterLabel": "後",
+          "items": [
+            {
+              "label": "下書き",
+              "before": 90,
+              "value": 35
+            },
+            {
+              "label": "確認",
+              "before": 30,
+              "value": 28
+            }
+          ]
+        }
+      },
+      "points": [
+        "下書きが大きく減った"
+      ]
+    },
+    {
+      "type": "simulator",
+      "title": "試算",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "inputs": [
+        {
+          "label": "人数",
+          "value": 120,
+          "min": 50,
+          "max": 600,
+          "step": 10,
+          "unit": "人"
+        },
+        {
+          "label": "1人あたり",
+          "value": 12,
+          "min": 2,
+          "max": 30,
+          "unit": "時間"
+        }
+      ],
+      "formula": "a × b",
+      "resultLabel": "月の削減時間",
+      "resultUnit": "時間",
+      "compareLabel": "目標",
+      "compareValue": 3000
+    },
+    {
+      "type": "gap",
+      "title": "不足と打ち手",
+      "takeaway": "結論を一文で示し、判断を早める",
+      "unit": "時間",
+      "targetLabel": "目標",
+      "target": 3000,
+      "currentLabel": "現状",
+      "current": 1440,
+      "measures": [
+        {
+          "title": "テンプレート",
+          "value": 620,
+          "desc": "指示文30種"
+        },
+        {
+          "title": "推進役",
+          "value": 540
+        },
+        {
+          "title": "入力ルール",
+          "value": 480
+        }
+      ]
+    },
+    {
+      "type": "closing",
+      "title": "次のアクション",
+      "message": "10月までに全店展開の計画を確定する"
+    }
+  ]
+}

@@ -1,0 +1,122 @@
+name: qa
+
+# The browser QA (qa/studio-*.mjs, driven through qa/run.mjs) and the layout check (every layout in every theme), split into shards that run in
+# parallel. `test` (test.yml) stays the fast unit-test gate; this is the check that a change still works in a real browser.
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+concurrency:
+  group: qa-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  qa:
+    name: qa (${{ matrix.name }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 45
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - name: format
+            scripts: studio-format
+          - name: import
+            scripts: studio-import,studio-interact,studio-layout,studio-motion-ide,studio-powerpoint
+          - name: basics
+            scripts: studio-smoke,studio-editing,studio-ai-mock,studio-motion,studio-drill,studio-interactive
+          - name: objects
+            scripts: studio-objects,studio-animations,studio-tables,studio-convert
+          - name: media
+            scripts: studio-media,studio-graphics,studio-coedit,studio-draw
+          - name: show
+            scripts: studio-show,studio-review,studio-more,studio-present
+          - name: live
+            scripts: studio-rehearse,studio-3d,studio-live,studio-tools,layouts
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: pip install -r tools/requirements.txt
+      - run: npm ci
+      # The layout checks measure Japanese text, so the runner needs Japanese fonts (the dev container has IPA Gothic).
+      - name: Fonts
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-ipafont fonts-wqy-zenhei
+      # The QA scripts find Playwright through PLAYWRIGHT_MODULE and the browser through CHROME_PATH.
+      - name: Playwright and Chromium
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw"
+          cd "$RUNNER_TEMP/pw"
+          npm init -y > /dev/null
+          npm install playwright@1.56.1 --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright" >> "$GITHUB_ENV"
+          echo "CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")" >> "$GITHUB_ENV"
+      - name: Run the QA scripts
+        run: node qa/run.mjs --only=${{ matrix.scripts }} --retry=1
+        env:
+          PYTHON_BIN: python
+      # Screenshots and the scripts' own error files, kept when something failed.
+      - name: Keep the screenshots of a failed run
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-out-${{ matrix.name }}
+          path: qa/out
+          retention-days: 7
+          if-no-files-found: ignore
+
+  # The PowerPoint import against LibreOffice's drawing of the same deck (qa/fidelity.mjs, tools/fidelity.py): every slide is
+  # scored, and a deck that looks worse than qa/fidelity-baseline.json - or a slide whose layout or words are far off - fails.
+  fidelity:
+    name: qa (fidelity)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: npm
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+          cache: pip
+          cache-dependency-path: tools/requirements.txt
+      - run: pip install -r tools/requirements.txt
+      - run: npm ci
+      - name: LibreOffice and fonts
+        run: sudo apt-get update -qq && sudo apt-get install -y -qq libreoffice-impress fonts-ipafont fonts-wqy-zenhei
+      - name: Playwright and Chromium
+        run: |
+          mkdir -p "$RUNNER_TEMP/pw"
+          cd "$RUNNER_TEMP/pw"
+          npm init -y > /dev/null
+          npm install playwright@1.56.1 --no-audit --no-fund
+          npx playwright install --with-deps chromium
+          echo "PLAYWRIGHT_MODULE=$RUNNER_TEMP/pw/node_modules/playwright" >> "$GITHUB_ENV"
+          echo "CHROME_PATH=$(node -e "console.log(require('playwright').chromium.executablePath())")" >> "$GITHUB_ENV"
+      - name: Measure the import
+        run: node qa/fidelity.mjs --strict
+        env:
+          PYTHON_BIN: python
+      - name: Keep the report and the side-by-side pictures
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: qa-fidelity
+          path: |
+            qa/out/fidelity/report.md
+            qa/out/fidelity/report.json
+            qa/out/fidelity/*/compare
+          retention-days: 14
+          if-no-files-found: ignore

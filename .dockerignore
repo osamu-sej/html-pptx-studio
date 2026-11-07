@@ -1,0 +1,9 @@
+node_modules
+.codex-runtime
+.venv
+__pycache__
+qa
+test
+.git
+.github
+npm-debug.log

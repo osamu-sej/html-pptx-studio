@@ -1,0 +1,591 @@
+<!doctype html>
+<html lang="ja">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>HTML PPTX Studio</title>
+    <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 32 32%22%3E%3Crect width=%2232%22 height=%2232%22 rx=%228%22 fill=%22%231f3864%22/%3E%3Crect x=%227%22 y=%2210%22 width=%2212%22 height=%223.5%22 rx=%221.75%22 fill=%22%23fff%22/%3E%3Crect x=%227%22 y=%2217.5%22 width=%2218%22 height=%223.5%22 rx=%221.75%22 fill=%22%231db954%22/%3E%3C/svg%3E" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link id="slideFonts" rel="stylesheet" data-hs-fonts />
+    <link rel="stylesheet" href="/engine/engine.css?v=__APP_VERSION__" data-hs-engine />
+    <link rel="stylesheet" href="/app.css?v=__APP_VERSION__" />
+  </head>
+  <body>
+    <header class="topbar">
+      <div class="brand"><span class="brand-mark" aria-hidden="true"><i></i></span><h1>HTML PPTX Studio<small title="__APP_BUILD__">v__APP_VERSION__</small></h1></div>
+      <div class="mode-tabs" role="tablist" aria-label="画面の切り替え">
+        <button id="createTab" role="tab" aria-selected="true" type="button">作成</button>
+        <button id="editTab" role="tab" aria-selected="false" type="button" disabled>編集</button>
+      </div>
+      <input id="deckTitleInput" class="deck-title-input hidden" type="text" aria-label="資料タイトル" maxlength="100" />
+      <div class="top-actions">
+        <span id="hostStatus" class="pill"><span class="dot"></span><span class="label">接続確認中</span></span>
+        <span id="localAiStatus" class="pill" hidden><span class="dot"></span><span class="label">予備AI</span></span>
+        <button id="saveDeckBtn" class="btn btn-ghost hidden" type="button" title="編集中の資料をこのブラウザに保存">資料を保存</button>
+        <button id="libraryBtn" class="btn btn-ghost" type="button" title="保存した資料やスライドを探す">保存庫</button>
+        <button id="historyBtn" class="btn btn-ghost" type="button" title="生成履歴・版の履歴">履歴</button>
+        <details id="moreMenu" class="more-menu hidden">
+          <summary class="btn btn-ghost">その他 ▾</summary>
+          <div class="menu" role="menu">
+            <button id="notesBtn" class="btn btn-ghost" type="button" title="スピーカーノートをまとめて作成">ノート作成</button>
+            <button id="replaceBtn" class="btn btn-ghost" type="button" title="資料全体の文字を検索・置換">検索・置換</button>
+            <button id="deckReviseBtn" class="btn btn-ghost hidden" type="button" title="指示を出して資料全体をAIに見直してもらいます">✦ AIで全体を見直す</button>
+            <button id="jsonExportBtn" class="btn btn-ghost" type="button" title="構成データをJSONで保存（別のPCで続きを編集できます）">JSONで保存</button>
+            <button id="reviewExportBtn" class="btn btn-ghost" type="button" title="相手はブラウザで開いてスライドごとにコメントを書き、結果のファイルを返送します">レビュー用ファイルを書き出す</button>
+            <button id="reviewImportBtn" class="btn btn-ghost" type="button" title="コメント付きのPowerPoint、またはレビュー結果（.json）からコメントを読み込み、AIで反映します">レビューを取り込む</button>
+            <input id="reviewImportFile" class="hidden" type="file" accept=".pptx,.json,application/json" />
+          </div>
+        </details>
+        <button id="helpBtn" class="btn btn-icon btn-ghost" type="button" title="使い方とショートカット（?）" aria-label="使い方">?</button>
+        <button id="commandBtn" class="btn btn-ghost command-btn" type="button" title="コマンドを探す・AIに頼む（⌘K）"><span>検索・コマンド</span><kbd>⌘K</kbd></button>
+        <button id="undoBtn" class="btn btn-icon btn-ghost hidden" type="button" title="元に戻す (⌘Z)" aria-label="元に戻す" disabled>↶</button>
+        <button id="redoBtn" class="btn btn-icon btn-ghost hidden" type="button" title="やり直す (⌘Y・⇧⌘Z)" aria-label="やり直す" disabled>↷</button>
+        <button id="shareBtn" class="btn btn-ghost share-btn hidden" type="button" title="共同編集：リンクを知っている人と同時に編集します"><span>共有</span></button>
+        <button id="presentBtn" class="btn btn-ghost hidden" type="button" title="全画面で発表・リハーサル（F5）">▶ 発表</button>
+        <button id="pdfBtn" class="btn btn-ghost hidden" type="button" title="PDFとして保存・印刷">PDF</button>
+        <button id="downloadBtn" class="btn btn-primary hidden" type="button" title="出力前にチェックし、動きごと1つのHTMLファイルに書き出します">HTML出力</button>
+      </div>
+    </header>
+
+    <main id="createView" class="create-view">
+      <div class="create-head">
+        <h2>どんな発表をしますか？</h2>
+        <p>伝えたいこと・元資料の文章や数値を書くか、ファイルを添付してください。AIがまず<b>骨子</b>を出し、整えてから、動きのあるHTMLスライドにします。</p>
+      </div>
+      <div id="standaloneConnection" class="connection hidden">
+        <div class="text">
+          <b id="codexConnectionTitle">Codexへの接続を確認中</b>
+          <span id="codexConnectionDetail">ChatGPTアカウントで接続します。APIキーは不要です。</span>
+          <form id="passcodePanel" class="device-auth hidden" autocomplete="off">
+            <input id="passcodeInput" type="password" placeholder="チームの合言葉" aria-label="チームの合言葉" style="max-width:240px" />
+            <button id="passcodeBtn" class="btn btn-primary" type="submit">入室</button>
+          </form>
+          <div id="deviceAuthPanel" class="device-auth hidden">
+            <code id="deviceCode" class="device-code"></code>
+            <button id="copyDeviceCodeBtn" class="btn" type="button" aria-label="認証コードをコピー">コピー</button>
+            <a id="deviceLink" href="#" target="_blank" rel="noopener noreferrer">認証ページを開いてコードを入力 ↗</a>
+          </div>
+        </div>
+        <button id="connectCodexBtn" class="btn btn-primary" type="button" hidden>Codexに接続</button>
+      </div>
+
+      <div class="prompt-box dropzone" id="briefDrop">
+        <textarea id="briefInput" class="brief" placeholder="例：生成AIの試行結果を役員に報告し、全社展開の予算承認をもらいたい。5部門120人で月1,440時間を削減、満足度4.3点。10月から3段階で展開し、初年度2,400万円。&#10;&#10;元資料の文章や表をそのまま貼り付けても、ファイルをドラッグしても構いません。"></textarea>
+        <div class="prompt-settings">
+          <label class="setting"><span>対象</span><select id="audienceSelect" aria-label="対象"><option value="役員">役員</option><option value="部長・マネージャー">部長・マネージャー</option><option value="社内（関係部署・全般）">社内（関係部署・全般）</option><option value="社外（取引先・お客様）">社外（取引先・お客様）</option><option value="チームメンバー">チームメンバー</option><option value="新入社員">新入社員</option><option value="研修の受講者">研修の受講者</option><option value="__other">その他（自由入力）</option></select><input id="audienceInput" type="text" value="役員" maxlength="80" placeholder="対象を入力" hidden /></label>
+          <label class="setting"><span>目的</span><select id="purposeSelect" aria-label="目的"><option value="意思決定・報告">意思決定・報告</option><option value="進捗共有">進捗共有</option><option value="提案・企画">提案・企画</option><option value="情報共有・周知">情報共有・周知</option><option value="説明・営業">説明・営業</option><option value="研修・勉強会">研修・勉強会</option><option value="振り返り">振り返り</option><option value="__other">その他（自由入力）</option></select><input id="purposeInput" type="text" value="意思決定・報告" maxlength="180" placeholder="目的を入力" hidden /></label>
+          <label class="setting"><span>トーン</span><select id="toneInput"><option value="executive">役員向け・結論先行</option><option value="business">標準ビジネス</option><option value="simple">簡潔・大きな文字</option><option value="friendly">やさしく親しみやすい</option></select></label>
+          <label class="setting setting-narrow"><span>枚数</span><input id="slideCount" type="number" min="2" max="50" value="8" /></label>
+          <div class="setting"><span id="densityLabel">文字量</span>
+            <div class="segmented" role="radiogroup" aria-labelledby="densityLabel" id="textDensity">
+              <label><input type="radio" name="density" value="light" /><span>少なめ</span></label>
+              <label><input type="radio" name="density" value="standard" checked /><span>標準</span></label>
+              <label><input type="radio" name="density" value="rich" /><span>多め</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="theme-strip" id="createThemes" role="radiogroup" aria-label="デザインのテーマ"></div>
+        <div class="prompt-bar">
+          <label class="chip" for="sourceFile" style="cursor:pointer" title="PowerPoint・Word・PDF・テキストから文章を取り込みます">📎 ファイルを添付</label>
+          <input id="sourceFile" class="hidden" type="file" accept=".txt,.md,.csv,.json,.pptx,.docx,.pdf,text/plain,application/json" />
+          <span id="briefCount" class="counter">0字</span>
+          <span class="spacer"></span>
+          <button id="quickDeckBtn" class="btn" type="button" title="骨子の確認を飛ばして、いきなりスライドを作ります">すぐにスライドまで作る</button>
+          <button id="askChatGptBtn" class="btn btn-primary btn-lg" type="button">骨子を作る →</button>
+        </div>
+      </div>
+      <div class="brief-tools" id="sampleChips"><span class="hint">例：</span></div>
+
+      <section id="outlinePanel" class="outline-panel hidden" aria-label="骨子">
+        <div class="outline-head">
+          <div><h3 id="outlineTitle">骨子</h3><p id="outlineReply" class="hint"></p></div>
+          <button id="outlineDiscardBtn" class="btn btn-ghost" type="button">破棄</button>
+        </div>
+        <ol id="outlineList" class="outline-list"></ol>
+        <div id="outlineVariety" class="outline-variety hidden" role="status"></div>
+        <div class="outline-bar">
+          <button id="outlineAddBtn" class="btn btn-ghost" type="button">＋ スライドを追加</button>
+          <span class="spacer"></span>
+          <span id="outlineCount" class="hint"></span>
+        </div>
+        <form id="outlineForm" class="outline-ask">
+          <input id="outlineInstruction" type="text" maxlength="1000" placeholder="骨子への指示（例：リスクと対策を1枚足して／結論を2枚目に）" />
+          <button id="outlineReviseBtn" class="btn" type="submit">AIで骨子を直す</button>
+        </form>
+        <div class="outline-go">
+          <button id="outlineBuildBtn" class="btn btn-primary btn-lg" type="button">この骨子でスライドを作る</button>
+        </div>
+      </section>
+
+      <div id="generationProgress" class="progress hidden" aria-live="polite">
+        <ol class="progress-steps"><li data-step="0"></li><li data-step="1"></li><li data-step="2"></li><li data-step="3"></li><li data-step="4"></li></ol>
+        <div class="progress-stage"><span id="progressStage">送信中</span><span id="progressElapsed" class="counter">0秒</span></div>
+        <div id="progressDetail" class="progress-detail"></div>
+        <div id="liveSlides" class="live-slides"></div>
+      </div>
+      <div id="generationStatus" class="status"></div>
+
+      <div class="create-alt">
+        <span class="hint">ほかの始め方：</span>
+        <button id="blankDeckBtn" class="btn" type="button">雛形から作る</button>
+        <button id="importDeckBtn" class="btn" type="button" title="PowerPoint・PDF・Wordの資料を取り込みます。PowerPointは元の見た目どおりにも取り込めます">既存の資料を取り込む</button>
+        <input id="importDeckFile" class="hidden" type="file" accept=".pptx,.pdf,.docx" />
+        <button id="sampleDeckBtn" class="btn btn-ghost" type="button">サンプル資料を開く</button>
+        <button id="importJsonBtn" class="btn btn-ghost" type="button">JSONを読み込む</button>
+        <span class="spacer"></span>
+        <button id="resumeEditBtn" class="btn hidden" type="button">編集中の資料に戻る →</button>
+      </div>
+      <p id="generationHint" class="hint" style="margin:10px 0 0">生成後、枠に収まらない文字はAIが自動で直します。スライドができたら右の「AIと話す」で仕上げ、「▶ 発表」でそのまま画面共有できます。</p>
+    </main>
+
+    <!-- The editing window, laid out as PowerPoint's: the ribbon across the top, a one-line message bar, the slide
+         thumbnails | the slide with its notes | the task pane, and the status bar (public/editor/window.mjs). -->
+    <main id="editView" class="edit-view hidden">
+      <!-- PowerPoint-style ribbon (public/editor/ui.mjs) -->
+      <div id="ribbon" class="ribbon" hidden></div>
+      <div id="msgBar" class="msg-bar" role="status" hidden></div>
+      <nav id="filmstrip" class="filmstrip" aria-label="スライド一覧（Delete で削除・⌘C ⌘V でコピーと貼り付け・⌘D で複製・右クリックでメニュー）" tabindex="0" data-own-keys></nav>
+      <button id="filmReopen" class="pane-reopen" type="button" title="サムネイルを表示する" hidden><span>サムネイル</span></button>
+      <div class="pane-split" data-split="film" role="separator" aria-orientation="vertical" aria-label="サムネイルの幅（ドラッグで変更・ダブルクリックで閉じる）" title="ドラッグで幅を変える・ダブルクリックで閉じる"></div>
+      <section class="stage">
+        <div id="stageBody" class="stage-body"></div>
+        <div class="notes-split" data-split="notes" role="separator" aria-orientation="horizontal" aria-label="ノートの高さ" title="ドラッグでノートの高さを変える" hidden></div>
+        <div id="notesPane" class="notes-pane" hidden></div>
+      </section>
+      <div class="pane-split" data-split="side" role="separator" aria-orientation="vertical" aria-label="作業ウィンドウの幅" title="ドラッグで幅を変える"></div>
+      <div class="side-panel">
+        <div class="side-tabs" role="tablist" aria-label="作業ウィンドウ">
+          <button id="chatTab" class="side-tab" type="button" role="tab" aria-selected="true">✦ AIと話す</button>
+          <button id="formTab" class="side-tab" type="button" role="tab" aria-selected="false">編集</button>
+          <button id="formatTab" class="side-tab" type="button" role="tab" aria-selected="false" title="選んだ図形・文字・画像の書式と、オブジェクトの一覧">書式</button>
+          <button id="animTab" class="side-tab" type="button" role="tab" aria-selected="false" title="アニメーション ウィンドウ：このスライドのアニメーションの順番・タイミング・効果">アニメーション</button>
+          <button id="commentTab" class="side-tab" type="button" role="tab" aria-selected="false" title="コメント：スライドへの確認・指摘（校閲）">コメント</button>
+          <button id="a11yTab" class="side-tab" type="button" role="tab" aria-selected="false" title="アクセシビリティ：代替テキスト・タイトル・読み取り順序などの確認（校閲）" hidden>アクセシビリティ</button>
+          <button id="sideClose" class="side-close" type="button" title="作業ウィンドウを閉じる（タブを押すと開きます）" aria-label="作業ウィンドウを閉じる">»</button>
+        </div>
+        <section id="chatPane" class="chat-pane" aria-label="AIとの会話">
+          <div class="chat-head">
+            <button id="memoToggle" class="btn btn-ghost" type="button" title="この資料でAIに毎回守ってほしいこと">📌 前提条件</button>
+            <span class="spacer"></span>
+            <button id="chatClearBtn" class="btn btn-ghost" type="button" title="会話を消去（資料は変わりません）">会話を消去</button>
+          </div>
+          <div id="memoBox" class="memo-box" hidden>
+            <label for="memoInput">前提条件（AIへの依頼すべてに毎回付けます）</label>
+            <textarea id="memoInput" rows="3" maxlength="2000" placeholder="例：役員向け。結論を先に。数値は2026年9月時点。専門用語は使わない。"></textarea>
+          </div>
+          <div id="chatLog" class="chat-log" aria-live="polite"></div>
+          <form id="chatForm" class="chat-composer">
+            <div id="chatContext" class="chat-context"></div>
+            <textarea id="chatInput" rows="2" placeholder="例：この1枚をもっと簡潔に／工程をクリックで1つずつ出して／各カードに詳しい補足を付けて"></textarea>
+            <div class="chat-actions">
+              <span class="hint">Enterで送信・Shift+Enterで改行・@番号でスライド指定</span>
+              <span class="spacer" style="flex:1"></span>
+              <button id="chatAttachBtn" class="btn btn-ghost voice-btn" type="button" title="資料を添付（PowerPoint・Word・PDF・テキスト）。内容をAIへの依頼に使います" aria-label="資料を添付">📎</button>
+              <input id="chatAttachFile" class="hidden" type="file" accept=".pptx,.docx,.pdf,.txt,.md,.csv,text/plain" />
+              <button id="chatSend" class="btn btn-primary" type="submit">送信</button>
+            </div>
+          </form>
+        </section>
+        <aside id="inspector" class="inspector" aria-label="スライドの編集" hidden></aside>
+        <aside id="formatPane" class="format-pane" aria-label="図形の書式" hidden></aside>
+        <aside id="animPane" class="format-pane anim-pane" aria-label="アニメーション ウィンドウ" hidden></aside>
+        <aside id="commentPane" class="format-pane comment-pane" aria-label="コメント" hidden></aside>
+        <aside id="a11yPane" class="format-pane a11y-pane" aria-label="アクセシビリティ" hidden></aside>
+      </div>
+      <footer id="statusBar" class="status-bar" aria-label="ステータス バー">
+        <span id="slidePos" class="sb-pos"></span>
+        <span id="deckMeta" class="sb-meta"></span>
+        <span id="autoImageStatus" class="sb-meta" role="status"></span>
+        <button id="autoImageAction" class="btn btn-sm hidden" type="button">停止</button>
+        <button id="issueSummary" class="issue-chip ok" type="button" title="構成・文字のあふれのチェック">チェック中…</button>
+        <button id="fixAllBtn" class="btn btn-sm hidden" type="button" title="文字が収まらないスライドをAIで順番に直します">あふれをAIで直す</button>
+        <span class="spacer"></span>
+        <button id="designBtn" class="sb-btn design-btn" type="button" title="切り替え・動き（資料全体）"><span id="designSwatch" class="swatch-dots" aria-hidden="true"></span><span id="designLabel">テーマ・動き</span></button>
+        <button id="notesToggle" class="sb-btn" type="button" aria-pressed="false" title="ノート：スライドの下にスピーカーノートを表示する">ノート</button>
+        <button id="motionPreviewBtn" class="sb-btn" type="button" title="閲覧表示：このスライドの動きをこの画面で確認（編集画面では静止しています）">▶ 動きを確認</button>
+        <div class="segmented sb-views" role="radiogroup" aria-label="表示">
+          <label title="標準：1枚ずつ編集"><input type="radio" name="view" value="single" checked /><span>1枚</span></label>
+          <label title="スライド一覧"><input type="radio" name="view" value="grid" /><span>一覧</span></label>
+          <label title="構成（アウトライン）：全スライドの見出しとキーメッセージを並べて、話の流れを確認・編集します"><input type="radio" name="view" value="outline" /><span>構成</span></label>
+        </div>
+        <div class="sb-zoom" role="group" aria-label="ズーム">
+          <button id="zoomOutBtn" class="sb-btn sb-icon" type="button" title="縮小（⌘−・⌘＋ホイール）" aria-label="縮小">−</button>
+          <input id="zoomSlider" type="range" min="10" max="400" step="1" value="100" aria-label="ズーム" title="ズーム" />
+          <button id="zoomInBtn" class="sb-btn sb-icon" type="button" title="拡大（⌘＋・⌘＋ホイール）" aria-label="拡大">＋</button>
+          <button id="zoomPctBtn" class="sb-btn sb-pct" type="button" title="ズーム：倍率を選ぶ">100%</button>
+          <button id="zoomFitBtn" class="sb-btn sb-icon" type="button" title="スライドを現在のウィンドウに合わせる（⌘0）" aria-label="スライドを現在のウィンドウに合わせる" aria-pressed="true"><svg viewBox="0 0 16 16" width="15" height="15" aria-hidden="true"><path d="M2 6V2h4M10 2h4v4M14 10v4h-4M6 14H2v-4" fill="none" stroke="currentColor" stroke-width="1.6"/><rect x="5" y="5.5" width="6" height="5" rx=".8" fill="none" stroke="currentColor" stroke-width="1.2"/></svg></button>
+        </div>
+      </footer>
+    </main>
+
+    <!-- 開発: the slide on the stage as JSON (edit and apply) or as the HTML the engine draws (app.js openCodeDialog). -->
+    <dialog id="codeDialog" class="code-dialog">
+      <div class="dialog-head"><h3 id="codeTitle">スライドのJSON</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <textarea id="codeText" class="code-text" spellcheck="false" aria-label="コード"></textarea>
+        <p id="codeStatus" class="hint" role="status"></p>
+      </div>
+      <div class="dialog-foot">
+        <button id="codeCopy" class="btn" type="button">コピー</button>
+        <span class="spacer" style="flex:1"></span>
+        <button class="btn btn-ghost" type="button" data-close>閉じる</button>
+        <button id="codeApply" class="btn btn-primary" type="button">適用</button>
+      </div>
+    </dialog>
+
+    <dialog id="designDialog" class="design-dialog">
+      <div class="dialog-head"><h3>動き（資料全体）</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <p class="hint template-note">テーマ（配色とフォント）はリボンの「デザイン」→「テーマ」で変えられます。ここでは資料全体の動きを選べます。</p>
+        <div class="design-row">
+          <!-- The choices are filled in from the engine's catalogs (app.js: fillMotionSelects). -->
+          <label class="field"><span class="field-label">スライドの切り替え</span>
+            <select id="transitionSelect"></select>
+          </label>
+          <label class="field"><span class="field-label">登場のしかた</span>
+            <select id="entranceSelect"></select>
+          </label>
+          <label class="field"><span class="field-label">マウスを乗せたとき</span>
+            <select id="hoverSelect"></select>
+          </label>
+        </div>
+        <div class="design-checks">
+          <label class="inline-check"><input id="numbersCheck" type="checkbox" checked />数字をカウントアップし、グラフを伸ばす</label>
+          <label class="inline-check"><input id="ambientCheck" type="checkbox" checked />テーマの背景の飾りを発表中にゆっくり動かす</label>
+          <label class="inline-check"><input id="drawCheck" type="checkbox" checked />アイコン・線・マーカーを描くように見せる</label>
+        </div>
+        <h4 class="dialog-section">モーショングラフィック</h4>
+        <p class="hint mg-note">表紙・章扉・ひと言メッセージ・最後のスライドに効きます。1枚ずつ変えるときは「編集」タブの「動き」で選べます。</p>
+        <div class="mg-label">背景の動き</div>
+        <div id="backdropGrid" class="motion-cards" role="radiogroup" aria-label="背景の動き"></div>
+        <div class="mg-label">大きな文字の動き</div>
+        <div id="kineticGrid" class="motion-cards" role="radiogroup" aria-label="大きな文字の動き"></div>
+        <div class="mg-label">強調（**語句**）の見せ方</div>
+        <div id="emphasisGrid" class="motion-cards" role="radiogroup" aria-label="強調の見せ方"></div>
+        <p class="hint">動きは発表モードとHTML出力で再生されます。編集画面では静止しています。「▶ 動きを確認」で今のスライドを試せます。</p>
+      </div>
+      <div class="dialog-foot">
+        <button id="designPreviewBtn" class="btn" type="button">▶ 動きを確認</button>
+        <button class="btn btn-primary" type="button" data-close>閉じる</button>
+      </div>
+    </dialog>
+
+    <dialog id="mediaUrlDialog">
+      <div class="dialog-head"><h3>URLで動画・画像・アニメーションを入れる</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <div class="field"><label for="mediaUrlInput">YouTubeのURL、動画（mp4・webm）・画像のURL、またはLottieアニメーション（.json）のURL</label><input id="mediaUrlInput" type="text" placeholder="https://www.youtube.com/watch?v=…" /></div>
+        <p class="hint">YouTubeは発表の画面で再生され、インターネットにつながっている必要があります。社外秘の動画は「動画をアップロード」を使ってください（このブラウザの中だけに保存されます）。</p>
+        <p class="hint">LottieFilesのアニメーションは、各アニメーションの「Lottie JSON」のURL（https://lottie.host/…）を貼ると、このブラウザに取り込まれて書き出したファイルでも動きます。</p>
+        <div id="mediaUrlStatus" class="status"></div>
+      </div>
+      <div class="dialog-foot"><button class="btn" type="button" data-close>やめる</button><button id="mediaUrlApply" class="btn btn-primary" type="button">入れる</button></div>
+    </dialog>
+
+    <dialog id="historyDialog">
+      <div class="dialog-head"><h3>履歴</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <div id="versionSection">
+          <h4 class="history-heading">この資料の版</h4>
+          <p class="hint" style="margin:0 0 8px">AIの提案を採用する前や、編集の区切りで自動保存しています。どの版にも戻せます（戻す前の状態も版として残ります）。</p>
+          <div id="versionList" class="history-list"></div>
+          <h4 class="history-heading">過去の資料</h4>
+        </div>
+        <p class="hint" style="margin:0 0 12px">直近20件の資料をこのブラウザに保存しています。</p>
+        <div id="historyList" class="history-list"></div>
+      </div>
+    </dialog>
+
+    <dialog id="libraryDialog" aria-label="保存した資料">
+      <div class="dialog-head"><h3>保存した資料</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <p class="hint">このブラウザに明示的に保存した資料です。資料名、スライドの本文・表・数値・ノートを検索できます。</p>
+        <div class="library-controls">
+          <input id="librarySearch" type="search" placeholder="キーワードで資料・スライドを探す" aria-label="保存した資料を検索" />
+          <button id="saveAsNewBtn" class="btn" type="button">編集中の資料を新規保存</button>
+        </div>
+        <div id="libraryStatus" class="status" role="status" aria-live="polite"></div>
+        <div id="libraryList" class="library-list"></div>
+        <p class="hint">保存庫はこのブラウザ専用です。ブラウザのデータを消す前や別の端末へ移すときは「JSONで保存」も使ってください。</p>
+      </div>
+    </dialog>
+
+    <dialog id="commandDialog" class="command-dialog" aria-label="コマンド">
+      <input id="commandInput" type="text" placeholder="やりたいこと・スライド名を入力（Enterで実行）／AIへの依頼もそのまま書けます" autocomplete="off" />
+      <div id="commandList" class="command-list" role="listbox"></div>
+      <div class="command-foot hint">↑↓で選択・Enterで実行・Escで閉じる</div>
+    </dialog>
+
+    <dialog id="exportCheckDialog" class="export-check">
+      <div class="dialog-head"><h3 id="exportCheckTitle">出力前のチェック</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <p id="exportCheckLead" class="hint" style="margin:0 0 10px"></p>
+        <div id="exportCheckList" class="check-list"></div>
+      </div>
+      <div class="dialog-foot">
+        <button id="exportCheckFixBtn" class="btn" type="button">戻って直す</button>
+        <button id="exportCheckGoBtn" class="btn btn-primary" type="button">このまま出力</button>
+      </div>
+    </dialog>
+
+    <dialog id="compareDialog" class="compare-dialog">
+      <div class="dialog-head"><h3 id="compareTitle">変更前と変更後</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <div class="compare-grid">
+          <figure><figcaption>変更前</figcaption><div id="compareBefore"></div></figure>
+          <figure><figcaption>変更後（提案）</figcaption><div id="compareAfter"></div></figure>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="typeDialog" class="type-dialog">
+      <div class="dialog-head"><h3 id="typeDialogTitle">スライドを追加</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body"><div id="typeGrid" class="type-grid"></div></div>
+    </dialog>
+
+    <dialog id="jsonDialog">
+      <div class="dialog-head"><h3>構成データ（JSON）</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <textarea id="slideDataInput" class="json-area" spellcheck="false" placeholder="slideData 配列、または {deckTitle, slideData} を貼り付けます。"></textarea>
+        <div class="create-actions" style="margin-top:10px">
+          <button id="applyJsonBtn" class="btn btn-primary" type="button">この内容を読み込む</button>
+          <button id="copyJsonBtn" class="btn" type="button">コピー</button>
+          <button id="exportJsonBtn" class="btn" type="button">ファイルに保存</button>
+          <label class="btn" for="jsonFile" style="cursor:pointer">ファイルから開く</label>
+          <input id="jsonFile" class="hidden" type="file" accept="application/json,.json" />
+        </div>
+        <div id="jsonStatus" class="status"></div>
+      </div>
+    </dialog>
+
+    <dialog id="rewriteDialog">
+      <div class="dialog-head"><h3>✦ AIで資料全体を見直す</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <div class="field">
+          <label for="rewriteInstruction">どう見直しますか？</label>
+          <textarea id="rewriteInstruction" rows="3" placeholder="例：役員が3分で判断できるように結論を強めて、各スライドをもっと簡潔に"></textarea>
+          <div class="ai-chips" id="rewriteChips"></div>
+          <label class="inline-check" style="margin-top:8px"><input id="rewriteFlexible" type="checkbox" />枚数の調整を許可する（±3枚まで）</label>
+          <div class="hint">数値と写真・動画は保ったまま、全スライドを作り直します。結果は提案として届き、確認してから採用できます。</div>
+        </div>
+        <div class="create-actions">
+          <button id="rewriteSubmit" class="btn btn-primary" type="button">見直しを始める</button>
+          <span id="rewriteStatus" class="hint"></span>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="templateDialog">
+      <div class="dialog-head"><h3>雛形から作る</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <p class="hint" style="margin:0 0 12px">目的に合う流れのスライドが用意されます。【】の部分を書き換えるだけで資料になります（AIの接続は不要です）。</p>
+        <div id="templateGrid" class="type-grid"></div>
+      </div>
+    </dialog>
+
+    <dialog id="notesDialog">
+      <div class="dialog-head"><h3>スピーカーノートを作成</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <div class="grid-2">
+          <div class="field"><span class="field-label">対象</span>
+            <div class="segmented" role="radiogroup">
+              <label><input type="radio" name="notesTarget" value="empty" checked /><span>ノートが空のスライド</span></label>
+              <label><input type="radio" name="notesTarget" value="all" /><span>すべて作り直す</span></label>
+            </div>
+          </div>
+          <div class="field"><span class="field-label">作り方</span>
+            <div class="segmented" role="radiogroup">
+              <label><input type="radio" name="notesMethod" value="ai" checked /><span>✦ AI（自然な原稿）</span></label>
+              <label><input type="radio" name="notesMethod" value="quick" /><span>簡易（すぐ作成）</span></label>
+            </div>
+          </div>
+        </div>
+        <div class="grid-2">
+          <div class="field"><span class="field-label">1枚あたりの長さ</span>
+            <div class="segmented" role="radiogroup">
+              <label><input type="radio" name="notesSeconds" value="30" /><span>30秒</span></label>
+              <label><input type="radio" name="notesSeconds" value="60" checked /><span>1分</span></label>
+              <label><input type="radio" name="notesSeconds" value="90" /><span>1分半</span></label>
+            </div>
+          </div>
+          <div class="field"><label for="notesTone">話し方</label><select id="notesTone"><option>丁寧</option><option>簡潔</option><option>親しみやすい</option></select></div>
+        </div>
+        <div class="create-actions">
+          <button id="notesRun" class="btn btn-primary" type="button">作成する</button>
+          <span id="notesStatus" class="hint">AIは結論→根拠→次のスライドへのつなぎの順で、スライドにある事実だけを使って書きます。</span>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="replaceDialog">
+      <div class="dialog-head"><h3>検索・置換</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <div class="grid-2">
+          <div class="field"><label for="findInput">検索する文字</label><input id="findInput" type="text" placeholder="例：DX" /></div>
+          <div class="field"><label for="replaceInput">置き換える文字</label><input id="replaceInput" type="text" placeholder="例：デジタル化" /></div>
+        </div>
+        <div class="find-options">
+          <label><input id="findCase" type="checkbox" /> 大文字と小文字を区別する</label>
+          <label><input id="findWord" type="checkbox" /> 完全に一致する単語だけを検索する</label>
+          <label><input id="findWidth" type="checkbox" /> 全角と半角を区別する</label>
+          <label>対象 <select id="findScope" aria-label="対象"><option value="deck">資料全体</option><option value="slide">このスライドだけ</option></select></label>
+        </div>
+        <ol id="findHits" class="find-hits" aria-label="見つかった場所"></ol>
+        <div class="create-actions">
+          <button id="replaceAllBtn" class="btn btn-primary" type="button" disabled>すべて置換</button>
+          <span id="findCount" class="hint">資料タイトル・本文・ノートを対象にします。</span>
+        </div>
+      </div>
+    </dialog>
+
+    <dialog id="helpDialog">
+      <div class="dialog-head"><h3>使い方とショートカット</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body help-body">
+        <h4>基本の流れ</h4>
+        <ol>
+          <li>「作成」で素材を入れて「骨子を作る」→ 骨子を整えて「この骨子でスライドを作る」（雛形・取り込み・サンプルからも始められます）。テーマは作成画面とリボンの「デザイン」で選べます</li>
+          <li>右の「✦ AIと話す」で直してほしいことを書く。変更は提案として届くので、確認して採用・却下します。「工程をクリックで1つずつ出して」「各カードにクリックで開く補足を付けて」のように動きも頼めます</li>
+          <li>スライド上の文字をクリックすると、その場で書き換えられます。写真・動画・動き・クリックで開く詳細は「編集」タブで</li>
+          <li>スライドの上のリボン（ホーム・挿入・図形の書式・表示）で、PowerPointのように図形・テキストボックス・画像・アイコン・線・表・グラフを置いて仕上げられます。「新しいスライド」→「白紙」なら、何もないところから自由に作れます。AIのレイアウトも「図形に変換」で部品に分けて作り込めます。細かい設定は右の「書式」タブで</li>
+          <li>作ったPowerPointに動きを付けたいときは、「作成」→「既存の資料を取り込む」→「見た目どおりに取り込む」。図形・文字・表・グラフ・写真が元の位置と書式のまま部品になり、PowerPointのアニメーションと画面切り替えも引き継ぎます。リボンの「アニメーション」で動きを足し、「インタラクション」でHTMLならではの動き（マウスの反応・クリックで詳細や拡大・おまかせ）を付けられます</li>
+          <li>「▶ 発表」でそのままZoomなどで画面共有。「HTML出力」で動きごと1つのファイルに書き出せます</li>
+        </ol>
+        <h4>編集のショートカット</h4>
+        <table class="help-keys">
+          <tr><td><kbd>←</kbd> <kbd>→</kbd></td><td>前後のスライドへ</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>Z</kbd> / <kbd>⌘</kbd>+<kbd>Y</kbd>（<kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>Z</kbd>）</td><td>元に戻す / やり直す</td></tr>
+          <tr><td><kbd>⇧</kbd>+<kbd>F9</kbd> / <kbd>Alt</kbd>+<kbd>F9</kbd> / <kbd>F7</kbd></td><td>グリッド線 / ガイドの表示 / 表記ゆれチェック</td></tr>
+          <tr><td><kbd>F4</kbd>（やり直す操作がないときの <kbd>⌘</kbd>+<kbd>Y</kbd>）</td><td>直前の書式の操作を、いま選んでいる部品（か文字）にもう一度行う（繰り返し）</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>↑</kbd> / <kbd>⌘</kbd>+<kbd>↓</kbd>（サムネイル）</td><td>スライドを上へ / 下へ移動</td></tr>
+          <tr><td><kbd>F5</kbd>（<kbd>⇧</kbd>+<kbd>F5</kbd>）</td><td>最初から（今のスライドから）発表</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>K</kbd></td><td>検索・コマンド（AIへの依頼もここから）</td></tr>
+          <tr><td>文字の編集中 <kbd>Enter</kbd> / <kbd>Esc</kbd></td><td>確定 / 取り消し</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>F1</kbd></td><td>リボンを折りたたむ / 表示する（タブのダブルクリック・右下の ˄ でも）</td></tr>
+          <tr><td><kbd>⌘</kbd>+ホイール・<kbd>⌘</kbd>+<kbd>＋</kbd> / <kbd>−</kbd> / <kbd>0</kbd></td><td>拡大 / 縮小 / スライドをウィンドウに合わせる</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>M</kbd> / <kbd>⌘</kbd>+<kbd>F</kbd>（<kbd>⌘</kbd>+<kbd>H</kbd>）</td><td>新しいスライド / 検索・置換</td></tr>
+          <tr><td>サムネイルで <kbd>Delete</kbd>・<kbd>⌘</kbd>+<kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd>・<kbd>⌘</kbd>+<kbd>D</kbd></td><td>スライドの削除・コピー／切り取り／貼り付け・複製（右クリックでメニュー）</td></tr>
+          <tr><td><kbd>?</kbd></td><td>このヘルプ</td></tr>
+        </table>
+        <h4>編集画面（PowerPointと同じ配置）</h4>
+        <ul>
+          <li>上からリボン・メッセージバー・［サムネイル｜スライドとノート｜作業ウィンドウ］・ステータス バー。リボン右上の「表示オプション」で、常に表示・タブのみ（タブを押すとスライドの上に開く）・自動的に非表示を選べます</li>
+          <li>スライドはいつもウィンドウに合わせて全体が見えます。ステータス バーのスライダーと倍率で拡大・縮小、⤢でウィンドウに合わせる</li>
+          <li>ステータス バーの「ノート」でスライドの下にノート欄。サムネイルと作業ウィンドウは境目をドラッグで幅を変え、閉じる・開くもできます</li>
+          <li>表示タブの「ガイド」▾（スライドの右クリックでも）で垂直・水平のガイドを置き、ドラッグで動かします（外へ出すと削除・Ctrlでコピー、部品が吸着）。「ルーラー」で目盛り（cm）、「グレースケール」で白黒の見え方。挿入タブの「記号と特殊文字」「日付と時刻」、ホームの「文字の間隔」も使えます</li>
+          <li>ホームの「セクション」（サムネイルの右クリックでも）でスライドをまとめ、名前を押して折りたたみ。校閲の「新しいコメント」で確認や指摘を書き込み、スライド ショーの「リハーサル」で時間を計って自動の切り替えに。開発タブではスライドのJSONを直したり、HTMLを見たりできます</li>
+        </ul>
+        <h4>図形・文字・画像（自由配置）</h4>
+        <table class="help-keys">
+          <tr><td>ドラッグ / 四隅・辺 / 上の丸 / 黄色の点</td><td>移動 / サイズ / 回転 / 形の調整（角の丸み・矢印の太さなど）</td></tr>
+          <tr><td><kbd>⇧</kbd>+ドラッグ</td><td>縦横比を保つ・まっすぐ動かす・15°ずつ回す・正方形や正円を描く</td></tr>
+          <tr><td><kbd>⌘</kbd>（<kbd>Ctrl</kbd>）+ドラッグ / <kbd>Alt</kbd>+ドラッグ</td><td>コピーしながら動かす / 吸着しない</td></tr>
+          <tr><td>ダブルクリック / <kbd>Enter</kbd> / そのまま入力</td><td>図形に文字を入れる（<kbd>Esc</kbd>で確定）。グループはダブルクリックで中の1つを選ぶ</td></tr>
+          <tr><td><kbd>←</kbd><kbd>↑</kbd><kbd>→</kbd><kbd>↓</kbd>（<kbd>⇧</kbd>：大きく、<kbd>⌘</kbd>：少しだけ）</td><td>少しずつ動かす</td></tr>
+          <tr><td><kbd>Tab</kbd> / <kbd>⌘</kbd>+<kbd>A</kbd> / <kbd>Esc</kbd></td><td>次のオブジェクト / すべて選択 / 選択を外す</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>C</kbd> <kbd>X</kbd> <kbd>V</kbd> / <kbd>⌘</kbd>+<kbd>D</kbd> / <kbd>Delete</kbd></td><td>コピー・切り取り・貼り付け / 複製 / 削除</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>G</kbd> / <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>G</kbd></td><td>グループ化 / グループ解除</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>]</kbd> <kbd>[</kbd>（<kbd>⇧</kbd>で最前面・最背面）</td><td>前面へ / 背面へ</td></tr>
+          <tr><td><kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>C</kbd> / <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>V</kbd></td><td>書式のコピー / 書式の貼り付け</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>B</kbd> <kbd>I</kbd> <kbd>U</kbd> / <kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>&gt;</kbd> <kbd>&lt;</kbd></td><td>太字・斜体・下線 / 文字を大きく・小さく</td></tr>
+          <tr><td><kbd>⌘</kbd>+<kbd>L</kbd> <kbd>E</kbd> <kbd>R</kbd> <kbd>J</kbd></td><td>左揃え・中央揃え・右揃え・両端揃え</td></tr>
+          <tr><td>右クリック</td><td>切り取り・コピー・順序・ロック・書式設定・リンク・アニメーションなどのメニュー</td></tr>
+        </table>
+        <h4>表・グラフ・リンク・トリミング・フリーフォーム</h4>
+        <ul>
+          <li>「挿入」→「表」でマス目を選んで表を入れます。セルをダブルクリックで入力、<kbd>Tab</kbd>で次のセル（最後のセルでは行が増えます）、<kbd>⇧</kbd>+クリックで範囲。「テーブル デザイン」でスタイル・見出し行・縞模様・セルの塗り、「レイアウト」で行・列の挿入と削除・セルの結合と分割・幅と高さを揃える。罫線はドラッグで動かせます</li>
+          <li>「挿入」→「グラフ」で縦棒・積み上げ・折れ線・ドーナツ・複合を入れます。「データの編集」の表に入力するか、Excelからコピーして貼り付け</li>
+          <li>文字を選んで「挿入」→「リンク」（<kbd>⌘</kbd>+<kbd>K</kbd>）で、その語句にWebページのリンク。発表中にクリックすると別のタブで開きます</li>
+          <li>画像を選んで「図の形式」→「トリミング」：黒い印をドラッグして切り取り、画像をドラッグして見える位置を決めます（<kbd>Enter</kbd>で確定、<kbd>Esc</kbd>で戻す）</li>
+          <li>「図形」の「線」の段の 曲線・フリーフォーム・フリーハンド で、自由な形を描けます。最初の点に戻ると閉じた図形、ダブルクリックで線のまま。右クリック →「頂点の編集」で点を動かす・足す（辺をダブルクリック）・消す（<kbd>Delete</kbd>）</li>
+        </ul>
+        <h4>図形に変換（AIのレイアウトを部品に分ける）</h4>
+        <ul>
+          <li>「ホーム」→「図形に変換」（またはスライドの何もないところを右クリック）で、AIが作ったレイアウトのスライドを、図形・テキストボックス・線・画像・アイコン・グラフ・表に分けます。見た目はそのままで、1つずつ動かしたり書き換えたりできる「白紙」のスライドになります</li>
+          <li>項目ごとの部品はグループになります（ダブルクリックで中の1つを選択、<kbd>⇧</kbd>+<kbd>⌘</kbd>+<kbd>G</kbd>で解除）。タイトル・キーメッセージ・ノート・出所はそのまま、クリックで1つずつ出す動きはアニメーションになり、「詳しく」のカードと深掘りページもその項目から開きます</li>
+          <li>表紙・章扉・クロージング・全面写真・ひと言メッセージは変換しません。<kbd>⌘</kbd>+<kbd>Z</kbd>で元のレイアウトに戻せます</li>
+        </ul>
+        <h4>アニメーションと画面切り替え</h4>
+        <ul>
+          <li>図形・文字・画像を選び、リボンの「アニメーション」で効果を選びます（開始・強調・終了・アニメーションの軌跡）。もう1つ付けるときは「アニメーションの追加」。方向などは「効果のオプション」、開始（クリック時・直前の動作と同時・直前の動作の後）・継続時間・遅延は右側で</li>
+          <li>右の「アニメーション」タブ（アニメーション ウィンドウ）で、順番をドラッグで入れ替え、タイミングの棒で長さを見比べ、繰り返し・巻き戻し・滑らかさ・トリガー（ほかの図形をクリックしたときに再生）を設定。「選択から」でその場所から再生できます</li>
+          <li>軌跡はスライド上の点をドラッグして形を変えられます（Shift＋終点で全体を回転・拡大）。「ユーザー設定パス」はクリックで点を打ち、ダブルクリックで終わります</li>
+          <li>タイトルや本文の項目にも、アニメーション ウィンドウの「＋ レイアウトの部品」から付けられます</li>
+          <li>「画面切り替え」タブで、このスライドへの切り替え・期間・自動的に切り替え（秒）。「すべてに適用」で全スライドに</li>
+          <li>発表中はクリックごとに次のアニメーションへ。再生中にクリックすると、まずその再生を終わらせます</li>
+        </ul>
+        <h4>HTMLならではの動き</h4>
+        <ul>
+          <li>リボンの「インタラクション」で、部品にマウスを乗せたときの反応（浮き上がる・拡大・光る・3Dで傾く・ほかを薄く）と説明、クリックしたときの操作（詳細を開く・拡大・裏返す・ほかの部品を表示/非表示・スポットライト）、ずっと動く動きを付けられます。PowerPointにはない動きです</li>
+          <li>「アニメーション」→「HTMLの効果」に、タイプライター・デコード・カウントアップ・グラフが伸びる・線を描く・マーカー・スポットライトなど</li>
+          <li>上部の「共有」で共同編集のリンクを作り、相手に送ると同じ資料を同時に編集できます。相手の名前と色が、共有ボタン・サムネイル・選んでいる部品に出ます。⌘Zは自分の変更だけを戻します</li>
+          <li>図形を2つ以上選んで、図形の書式 →「図形の結合」（接合・型抜き/合成・切り出し・重なり抽出・単純型抜き）。最初に選んだ図形の書式になります</li>
+          <li>挿入 →「SmartArt」で図を入れ、横のテキスト ウィンドウで1行1項目（Tabでレベル）。「SmartArt のデザイン」タブでレイアウト・色・図形の追加、図形に変換。ホーム →「SmartArt に変換」でテキストを図に</li>
+          <li>挿入 →「オーディオ」で音声（ファイル・この場で録音・URL）、「画面録画」で画面をビデオとして入れます。選ぶと「再生」タブ：トリミング・フェード・音量・開始（自動／クリック時／一連のクリック動作）・スライド切り替え後も再生・繰り返し・アイコンを隠す・巻き戻し・バックグラウンドで再生</li>
+          <li>コメントには書いた人の名前が付きます（最初に一度だけ名前を聞きます。ファイル → ユーザー名で変更）。返信・@で相手を指定・編集・解決、図形を選んでから付けるとその図形にピン留め、スライド上のピンから開けます</li>
+          <li>「HTMLの動きを付ける」（おまかせ）で、タイトル・グラフ・数字・線・カード・写真に合う動きをまとめて付けます。元のアニメーションとテンプレートの飾りはそのまま、⌘Zで戻せます。PowerPointを見た目どおりに取り込むと自動で付きます（メッセージバーの「元に戻す」、インタラクション タブの「取り込み時に自動」でオフ）</li>
+          <li>右の「アニメーション」タブに、スライドで動くもの（スライドの自動の動き・アニメーション・インタラクション）を起きる順に並べます。その場で選び直す・×で外す・名前を押してリボンで変える、ができます</li>
+        </ul>
+        <h4>発表中のショートカット</h4>
+        <table class="help-keys">
+          <tr><td><kbd>→</kbd> <kbd>Space</kbd> クリック</td><td>次へ（「クリックで順番に」のスライドは1項目ずつ、「不足と打ち手」は打ち手を1つずつオン）</td></tr>
+          <tr><td><kbd>←</kbd></td><td>前へ</td></tr>
+          <tr><td><kbd>P</kbd></td><td>発表者ビュー（ノート・次のスライド・経過時間を別ウィンドウに。Zoomでは発表のウィンドウだけを共有）</td></tr>
+          <tr><td><kbd>N</kbd> / <kbd>O</kbd>（<kbd>G</kbd>） / <kbd>F</kbd></td><td>ノート / スライド一覧 / 全画面</td></tr>
+          <tr><td><kbd>D</kbd></td><td>自動デモ（矢印が各ページを順に操作して見せ、一覧で終わる。キーかクリックで止まる）</td></tr>
+          <tr><td><kbd>B</kbd> / <kbd>W</kbd></td><td>画面を黒 / 白にする</td></tr>
+          <tr><td>番号 + <kbd>Enter</kbd></td><td>そのスライドへ移動</td></tr>
+          <tr><td><kbd>Esc</kbd></td><td>詳細・根拠パネルを閉じる／発表を終了</td></tr>
+        </table>
+        <h4>知っておくと便利</h4>
+        <ul>
+          <li>赤い破線の枠は、文字がスライドに収まっていない箇所です。欄を短くするか「AIで収まるように直す」を使います</li>
+          <li>アップロードした動画はこのブラウザの中に保存されます。HTML出力するとファイルの中に入ります（大きな動画はファイルも大きくなります）</li>
+          <li>Zoomで動画の音を流すときは、画面共有の「音声を共有」をオンにしてください</li>
+          <li>作業中の資料はこのブラウザに自動保存されます。別のPCへ移すときは「その他」→「JSONで保存」</li>
+          <li>手で置いた図形・文字・画像は、AIに頼んで直しても消えません（AIには「自由配置」の要約だけを伝えます）</li>
+        </ul>
+      </div>
+    </dialog>
+
+    <dialog id="shareDialog" class="share-dialog">
+      <div class="dialog-head"><h3>共同編集のリンク</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <p class="hint">このリンクを開いた人は、同じ資料を同時に見て編集できます。誰がどのスライドにいるか・何を選んでいるかが色で表示されます。リンクは社内の人にだけ送ってください。</p>
+        <div class="share-row"><input id="shareLink" type="text" readonly aria-label="共同編集のリンク" /><button id="shareCopy" class="btn btn-primary" type="button">コピー</button></div>
+        <p id="shareStatus" class="hint" role="status"></p>
+      </div>
+      <div class="dialog-foot"><button class="btn" type="button" data-close>閉じる</button></div>
+    </dialog>
+
+    <dialog id="askDialog" class="ask-dialog" data-keeps-text>
+      <div class="dialog-head"><h3 id="askTitle">入力</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body"><label class="field"><span id="askLabel" class="field-label"></span><input id="askInput" type="text" autocomplete="off" /></label></div>
+      <div class="dialog-foot"><button class="btn" type="button" data-close>やめる</button><button id="askOk" class="btn btn-primary" type="button">OK</button></div>
+    </dialog>
+
+    <dialog id="importModeDialog" class="import-mode-dialog">
+      <div class="dialog-head"><h3>PowerPointの取り込み方</h3><button class="btn btn-ghost btn-icon" type="button" data-close aria-label="閉じる">✕</button></div>
+      <div class="dialog-body">
+        <p id="importModeName" class="hint"></p>
+        <div class="import-modes">
+          <button type="button" class="import-mode" data-mode="exact"><b>見た目どおりに取り込む<span class="import-badge">おすすめ</span></b><span>元のPowerPointと同じ配置・色・文字で取り込みます。図形・テキスト・表・グラフ・写真は1つずつ動かせる部品になり、PowerPointのアニメーションと画面切り替えも引き継ぎます。作った資料に動きを付けて発表・書き出ししたいときに。</span></button>
+          <button type="button" class="import-mode" data-mode="layout"><b>HTMLレイアウトに組み直す</b><span>文章・表・グラフ・ノートを読み取り、スタジオのレイアウト（結論・カード・図解）に組み直します。AIでブラッシュアップして作り直したいときに。</span></button>
+        </div>
+      </div>
+    </dialog>
+
+    <div id="presenter" class="presenter hidden" role="dialog" aria-label="発表モード"></div>
+
+    <div id="printRoot" class="print-root" aria-hidden="true"></div>
+    <div id="measureRoot" class="measure-root" aria-hidden="true"></div>
+
+    <div id="toast" class="toast" role="status" aria-live="polite"></div>
+
+    <script src="/engine/engine.js?v=__APP_VERSION__"></script>
+    <script src="/engine/objects.js?v=__APP_VERSION__"></script>
+    <script src="/engine/animate.js?v=__APP_VERSION__"></script>
+    <script src="/engine/motion.js?v=__APP_VERSION__"></script>
+    <script src="/engine/models.js?v=__APP_VERSION__"></script>
+    <script type="module" src="/app.js?v=__APP_VERSION__"></script>
+  </body>
+</html>

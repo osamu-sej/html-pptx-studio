@@ -1,0 +1,69 @@
+<!doctype html>
+<html lang="ja">
+<head>
+<meta charset="utf-8">
+<title>QA gallery</title>
+<link rel="stylesheet" href="/public/engine/engine.css" data-hs-engine>
+<link id="fonts" rel="stylesheet" data-hs-fonts>
+<style>
+body { margin: 0; background: #8a8f99; }
+.sheet { display: grid; grid-template-columns: repeat(var(--cols, 2), var(--cw, 960px)); gap: 10px; padding: 10px; width: fit-content; }
+.cell { position: relative; }
+.cell > b { position: absolute; left: 6px; top: 6px; z-index: 9; background: #000c; color: #fff; font: 12px sans-serif; padding: 2px 6px; border-radius: 4px; }
+.cell.bad > b { background: #c00; }
+</style>
+</head>
+<body>
+<div id="out"></div>
+<script src="/public/engine/engine.js"></script>
+<script src="/public/engine/objects.js"></script>
+<script src="/public/engine/animate.js"></script>
+<script src="/public/engine/motion.js"></script>
+<script>
+(async () => {
+  const q = new URLSearchParams(location.search);
+  const source = await (await fetch(q.get("deck") || "/public/samples/ai-rollout.json")).json();
+  SlideEngine.setIcons(await (await fetch("/public/engine/icons.json")).json());
+  const theme = q.get("theme") || "clarity";
+  const deck = { title: source.deckTitle, audience: source.audience, purpose: source.purpose, theme, slides: source.slideData, motion: {}, accent: q.get("accent") || undefined };
+  const link = document.getElementById("fonts");
+  await new Promise((resolve) => { link.onload = resolve; link.onerror = resolve; link.href = SlideEngine.fontHref([theme]); });
+  const from = Number(q.get("from") || 0);
+  const count = Number(q.get("count") || 6);
+  const only = q.get("only") ? q.get("only").split(",").map(Number) : null;
+  const sheet = document.createElement("div");
+  sheet.className = "sheet";
+  sheet.style.setProperty("--cols", q.get("cols") || "2");
+  sheet.style.setProperty("--cw", `${q.get("w") || 960}px`);
+  document.getElementById("out").append(sheet);
+  const indices = only || deck.slides.map((_, i) => i).slice(from, from + count);
+  for (const i of indices) {
+    const slide = deck.slides[i];
+    if (!slide) continue;
+    const el = SlideEngine.render(slide, { deck, index: i, mode: q.get("mode") || "thumb", assetBase: "/public/assets/" });
+    const scaler = SlideEngine.mount(el);
+    scaler.style.width = `${q.get("w") || 960}px`;
+    const cell = document.createElement("div");
+    cell.className = "cell";
+    const label = document.createElement("b");
+    label.textContent = `${i + 1} ${slide.type}`;
+    cell.append(scaler, label);
+    sheet.append(cell);
+  }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  await document.fonts.ready;
+  await new Promise((resolve) => setTimeout(resolve, 300));
+  await document.fonts.ready;
+  const results = [];
+  [...sheet.querySelectorAll(".hs-slide")].forEach((el, k) => {
+    const result = SlideEngine.fit(el);
+    results.push({ index: indices[k], type: deck.slides[indices[k]].type, ...result });
+    if (result.issues.length) el.closest(".cell").classList.add("bad");
+  });
+  if (q.get('repaint') !== '0') for (const svg of sheet.querySelectorAll('.hs-slide svg')) { svg.style.display = 'none'; void svg.getBoundingClientRect(); svg.style.display = ''; }
+  await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+  window.__done = results;
+})().catch((error) => { window.__done = { error: String(error && error.stack || error) }; });
+</script>
+</body>
+</html>

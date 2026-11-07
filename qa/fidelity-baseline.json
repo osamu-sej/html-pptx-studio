@@ -1,0 +1,10 @@
+{
+  "plain43": {
+    "ssimMean": 0.8301,
+    "textMean": 1
+  },
+  "template": {
+    "ssimMean": 0.8894,
+    "textMean": 1
+  }
+}

@@ -1,0 +1,249 @@
+{
+ "deckTitle": "グラフ",
+ "slideData": [
+  {
+   "type": "title",
+   "title": "グラフ",
+   "subtitle": "新しい種類"
+  },
+  {
+   "type": "blank",
+   "title": "area",
+   "elements": [
+    {
+     "id": "c0",
+     "kind": "chart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "chart": {
+      "type": "area",
+      "labels": [
+       "4月",
+       "5月",
+       "6月",
+       "7月",
+       "8月",
+       "9月"
+      ],
+      "series": [
+       {
+        "name": "今年",
+        "values": [
+         320,
+         360,
+         410,
+         390,
+         450,
+         520
+        ]
+       },
+       {
+        "name": "前年",
+        "values": [
+         300,
+         310,
+         340,
+         350,
+         360,
+         400
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "pie",
+   "elements": [
+    {
+     "id": "c1",
+     "kind": "chart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "chart": {
+      "type": "pie",
+      "labels": [
+       "来店",
+       "アプリ",
+       "宅配"
+      ],
+      "series": [
+       {
+        "name": "構成比",
+        "values": [
+         60,
+         25,
+         15
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "scatter",
+   "elements": [
+    {
+     "id": "c2",
+     "kind": "chart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "chart": {
+      "type": "scatter",
+      "labels": [
+       "10",
+       "20",
+       "30",
+       "40",
+       "50",
+       "60"
+      ],
+      "series": [
+       {
+        "name": "売上（万円）",
+        "values": [
+         120,
+         180,
+         210,
+         260,
+         300,
+         380
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "radar",
+   "elements": [
+    {
+     "id": "c3",
+     "kind": "chart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "chart": {
+      "type": "radar",
+      "labels": [
+       "品揃え",
+       "接客",
+       "清潔さ",
+       "価格",
+       "立地"
+      ],
+      "series": [
+       {
+        "name": "自店",
+        "values": [
+         4,
+         3.5,
+         4.5,
+         3,
+         4
+        ]
+       },
+       {
+        "name": "地区平均",
+        "values": [
+         3.5,
+         3.5,
+         3.8,
+         3.4,
+         3.6
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "waterfall",
+   "elements": [
+    {
+     "id": "c4",
+     "kind": "chart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "chart": {
+      "type": "waterfall",
+      "labels": [
+       "前年",
+       "来店客増",
+       "客単価",
+       "廃棄減",
+       "人件費",
+       "合計"
+      ],
+      "series": [
+       {
+        "name": "利益（百万円）",
+        "values": [
+         100,
+         25,
+         12,
+         8,
+         -15,
+         0
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "funnel",
+   "elements": [
+    {
+     "id": "c5",
+     "kind": "chart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "chart": {
+      "type": "funnel",
+      "labels": [
+       "認知",
+       "興味",
+       "来店",
+       "購入",
+       "リピート"
+      ],
+      "series": [
+       {
+        "name": "人数",
+        "values": [
+         1000,
+         620,
+         380,
+         240,
+         120
+        ]
+       }
+      ]
+     }
+    }
+   ]
+  }
+ ]
+}

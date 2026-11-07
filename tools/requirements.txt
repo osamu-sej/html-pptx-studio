@@ -1,0 +1,6 @@
+python-pptx==1.0.2
+Pillow==11.3.0
+lxml==6.0.1
+pypdf==6.1.1
+pymupdf==1.26.5
+numpy==2.4.6

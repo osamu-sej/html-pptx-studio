@@ -1,0 +1,58 @@
+{
+  "name": "html-pptx-studio",
+  "version": "2.0.0",
+  "private": true,
+  "type": "module",
+  "description": "AI-built slide decks as moving HTML presentations that carry over to PowerPoint: outline, edit like PowerPoint, talk to the AI, present, and export to HTML or an editable .pptx.",
+  "scripts": {
+    "start": "node server.js",
+    "dev": "node --watch server.js",
+    "test": "node --test test/*.test.js",
+    "test:py": "python3 -m unittest discover -s test -p \"test_*.py\"",
+    "qa": "node qa/shoot.mjs",
+    "qa:studio": "node qa/studio-smoke.mjs",
+    "qa:motion": "node qa/studio-motion.mjs",
+    "qa:drill": "node qa/studio-drill.mjs",
+    "qa:interactive": "node qa/studio-interactive.mjs",
+    "qa:objects": "node qa/studio-objects.mjs",
+    "qa:animations": "node qa/studio-animations.mjs",
+    "qa:tables": "node qa/studio-tables.mjs",
+    "qa:convert": "node qa/studio-convert.mjs",
+    "qa:import": "node qa/studio-import.mjs",
+    "qa:interact": "node qa/studio-interact.mjs",
+    "qa:layout": "node qa/studio-layout.mjs",
+    "qa:motion-ide": "node qa/studio-motion-ide.mjs",
+    "qa:powerpoint": "node qa/studio-powerpoint.mjs",
+    "qa:media": "node qa/studio-media.mjs",
+    "qa:graphics": "node qa/studio-graphics.mjs",
+    "qa:coedit": "node qa/studio-coedit.mjs",
+    "qa:draw": "node qa/studio-draw.mjs",
+    "qa:show": "node qa/studio-show.mjs",
+    "qa:review": "node qa/studio-review.mjs",
+    "qa:more": "node qa/studio-more.mjs",
+    "qa:format": "node qa/studio-format.mjs",
+    "qa:present": "node qa/studio-present.mjs",
+    "qa:rehearse": "node qa/studio-rehearse.mjs",
+    "qa:3d": "node qa/studio-3d.mjs",
+    "qa:live": "node qa/studio-live.mjs",
+    "qa:tools": "node qa/studio-tools.mjs",
+    "qa:all": "node qa/run.mjs",
+    "qa:fidelity": "node qa/fidelity.mjs",
+    "qa:layouts": "node qa/shoot.mjs --themes=clarity,midnight,editorial,mono,forest,sunset,aurora,kinari --deck=/qa/all-layouts.json --per=8"
+  },
+  "engines": {
+    "node": ">=20"
+  },
+  "dependencies": {
+    "@openai/codex": "0.144.1",
+    "lottie-web": "5.13.0",
+    "polygon-clipping": "^0.15.7",
+    "qrcode-generator": "2.0.4",
+    "three": "0.186.1",
+    "zod": "^3.25.76",
+    "zod-to-json-schema": "^3.25.1"
+  },
+  "devDependencies": {
+    "linkedom": "^0.18.12"
+  }
+}

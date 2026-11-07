@@ -1,0 +1,606 @@
+{
+ "deckTitle": "SmartArt",
+ "slideData": [
+  {
+   "type": "title",
+   "title": "SmartArt",
+   "subtitle": "全レイアウト"
+  },
+  {
+   "type": "blank",
+   "title": "blocks / blue",
+   "elements": [
+    {
+     "id": "s0",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "blocks",
+      "color": "blue",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "vlist / mix",
+   "elements": [
+    {
+     "id": "s1",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "vlist",
+      "color": "mix",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "process / brown",
+   "elements": [
+    {
+     "id": "s2",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "process",
+      "color": "brown",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "chevron / gray",
+   "elements": [
+    {
+     "id": "s3",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "chevron",
+      "color": "gray",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "vprocess / outline",
+   "elements": [
+    {
+     "id": "s4",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "vprocess",
+      "color": "outline",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "steps / blue",
+   "elements": [
+    {
+     "id": "s5",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "steps",
+      "color": "blue",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "timeline / mix",
+   "elements": [
+    {
+     "id": "s6",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "timeline",
+      "color": "mix",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "cycle / brown",
+   "elements": [
+    {
+     "id": "s7",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "cycle",
+      "color": "brown",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "radial / gray",
+   "elements": [
+    {
+     "id": "s8",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "radial",
+      "color": "gray",
+      "items": [
+       {
+        "text": "お客様",
+        "level": 0
+       },
+       {
+        "text": "品ぞろえ",
+        "level": 0
+       },
+       {
+        "text": "価格",
+        "level": 0
+       },
+       {
+        "text": "接客",
+        "level": 0
+       },
+       {
+        "text": "売場",
+        "level": 0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "hierarchy / outline",
+   "elements": [
+    {
+     "id": "s9",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "hierarchy",
+      "color": "outline",
+      "items": [
+       {
+        "text": "社長",
+        "level": 0
+       },
+       {
+        "text": "営業本部",
+        "level": 1
+       },
+       {
+        "text": "第1営業部",
+        "level": 2
+       },
+       {
+        "text": "第2営業部",
+        "level": 2
+       },
+       {
+        "text": "管理本部",
+        "level": 1
+       },
+       {
+        "text": "総務部",
+        "level": 2
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "venn / blue",
+   "elements": [
+    {
+     "id": "s10",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "venn",
+      "color": "blue",
+      "items": [
+       {
+        "text": "品質",
+        "level": 0
+       },
+       {
+        "text": "価格",
+        "level": 0
+       },
+       {
+        "text": "利便性",
+        "level": 0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "target / mix",
+   "elements": [
+    {
+     "id": "s11",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "target",
+      "color": "mix",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "matrix / brown",
+   "elements": [
+    {
+     "id": "s12",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "matrix",
+      "color": "brown",
+      "items": [
+       {
+        "text": "強み×機会",
+        "level": 0
+       },
+       {
+        "text": "強み×脅威",
+        "level": 0
+       },
+       {
+        "text": "弱み×機会",
+        "level": 0
+       },
+       {
+        "text": "弱み×脅威",
+        "level": 0
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "blank",
+   "title": "pyramid / gray",
+   "elements": [
+    {
+     "id": "s13",
+     "kind": "smartart",
+     "x": 160,
+     "y": 230,
+     "w": 1600,
+     "h": 700,
+     "smartart": {
+      "layout": "pyramid",
+      "color": "gray",
+      "items": [
+       {
+        "text": "計画",
+        "level": 0
+       },
+       {
+        "text": "目標と期限を決める",
+        "level": 1
+       },
+       {
+        "text": "実行",
+        "level": 0
+       },
+       {
+        "text": "店舗で試す",
+        "level": 1
+       },
+       {
+        "text": "評価",
+        "level": 0
+       },
+       {
+        "text": "数字で振り返る",
+        "level": 1
+       }
+      ]
+     }
+    }
+   ]
+  },
+  {
+   "type": "closing",
+   "title": "終わり"
+  }
+ ]
+}
