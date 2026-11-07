@@ -171,5 +171,22 @@ class ExportTest(unittest.TestCase):
         self.assertTrue(self.back["slideData"][1]["hidden"])
 
 
+class ShapeIds(unittest.TestCase):
+    def test_ids_are_unique_whatever_adds_the_shape(self):
+        # Pictures and tables are numbered by python-pptx, shapes and lines by the writer: never the same number twice
+        # (PowerPoint repairs a slide whose shapes share an id).
+        objects = []
+        for k in range(3):
+            objects += [{"id": f"p{k}", "kind": "image", "x": 10, "y": 10, "w": 40, "h": 20, "src": png()},
+                        {"id": f"s{k}", "kind": "shape", "shape": "rect", "x": 100, "y": 100, "w": 300, "h": 200, "text": "<p>a</p>"},
+                        {"id": f"l{k}", "kind": "line", "x1": 0, "y1": 0, "x2": 100, "y2": 100},
+                        {"id": f"t{k}", "kind": "table", "x": 500, "y": 500, "w": 400, "h": 200, "cells": [[{"text": "<p>x</p>"}]]}]
+        data, _ = write_pptx({"theme": THEME, "slides": [{"objects": objects}, {"objects": objects[:4]}]})
+        prs = Presentation(io.BytesIO(data))
+        for slide in prs.slides:
+            ids = [sh.shape_id for sh in slide.shapes]
+            self.assertEqual(len(ids), len(set(ids)), ids)
+
+
 if __name__ == "__main__":
     unittest.main()

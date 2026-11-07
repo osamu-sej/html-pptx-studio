@@ -267,6 +267,9 @@ class Writer:
 
     # ---- ids
     def new_id(self) -> int:
+        """The next free shape id on the slide (python-pptx numbers the pictures, tables and charts it adds the same way)."""
+        if self._slide is not None:
+            return self._slide.shapes._next_shape_id
         self.next_id += 1
         return self.next_id
 
