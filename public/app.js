@@ -1861,7 +1861,8 @@ function updateTopbar() {
   $("undoBtn").disabled = !state.undo.length;
   $("redoBtn").disabled = !state.redo.length;
   $("downloadBtn").disabled = Boolean(state.exporting);
-  $("pptxBtn").disabled = Boolean(state.exporting);
+  // While PowerPoint 出力 runs on the server, its button stops it.
+  $("pptxBtn").disabled = Boolean(state.exporting) && !state.exportJob;
 }
 
 function renderAll() {
@@ -6267,6 +6268,11 @@ async function exportHtml({ checked = false, password = null } = {}) {
  * headless browser and writes an editable .pptx (server/pptx.mjs, tools/pptx_export.py).
  */
 async function exportPptx({ checked = false } = {}) {
+  // While it runs, the button stops it.
+  if (state.exporting && state.exportJob) {
+    if (confirm("PowerPoint への書き出しを取り消しますか？")) fetch(`/api/export/pptx/jobs/${state.exportJob}`, { method: "DELETE" }).catch(() => {});
+    return;
+  }
   if (!state.deck || state.exporting) return;
   if (!checked) {
     await measureAll();
@@ -6279,7 +6285,27 @@ async function exportPptx({ checked = false } = {}) {
   try {
     const { deck, missing } = await portableDeck();
     if (deck.slides[0].type === "title" && !deck.slides[0].date) deck.slides[0].date = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" });
-    const response = await fetch("/api/export/pptx", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deck }) });
+    // The server writes it as a job: follow how far it got (the button and a note), then fetch the file.
+    const started = await fetch("/api/export/pptx/jobs", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deck }) });
+    const first = await started.json().catch(() => ({}));
+    if (!started.ok) throw new Error(first.error || `HTTP ${started.status}`);
+    state.exportJob = first.id;
+    updateTopbar();
+    let job = first;
+    let said = "";
+    while (!["completed", "failed", "stopped"].includes(job.status)) {
+      const count = job.total ? `${Math.min(job.done + 1, job.total)}/${job.total}枚` : "";
+      button.textContent = `書き出し中… ${count}`.trim();
+      button.title = `${job.stage || "書き出しています"}（${job.seconds ?? 0}秒）。押すと取り消します`;
+      if (job.stage && job.stage !== said) { toast(`PowerPoint 出力：${job.stage}`); said = job.stage; }
+      await new Promise((resolve) => setTimeout(resolve, 1200));
+      const polled = await fetch(`/api/export/pptx/jobs/${first.id}`).catch(() => null);
+      if (polled?.ok) job = await polled.json();
+      else if (polled?.status === 404) throw new Error("書き出しが見つかりません（サーバーが再起動した可能性があります）。もう一度お試しください。");
+    }
+    if (job.status === "stopped") { toast(job.error || "書き出しを止めました。"); return; }
+    if (job.status === "failed") throw new Error(job.error || "書き出せませんでした。");
+    const response = await fetch(`/api/export/pptx/jobs/${first.id}/file`);
     if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`);
     const fileName = `${fileSafe(deck.title, "presentation")}_${today()}.pptx`;
     await downloadBlob(await response.blob(), fileName);
@@ -6291,6 +6317,7 @@ async function exportPptx({ checked = false } = {}) {
       stats.clips ? `HTMLならではの動き${stats.clips}件はその部品だけの動画に` : "",
       stats.approximated ? `HTMLならではの動き${stats.approximated}件は近い PowerPoint の動きに` : "",
       stats.rasterized ? `PowerPoint にない部品${stats.rasterized}か所は図に` : "",
+      stats.unfilmed ? `動画にする動き${stats.unfilmed}件は、このサーバーの性能では撮れないため PowerPoint の近い動き・静止画に` : "",
     ].filter(Boolean);
     const detail = notes.length ? `（${notes.join("、")}しました）` : "";
     toast(`PowerPoint に書き出しました${detail}${missing.length ? `。${missing.join("・")}枚目の写真・動画は見つからなかったので外しました` : ""}`);
@@ -6298,6 +6325,8 @@ async function exportPptx({ checked = false } = {}) {
     toast(`PowerPoint に書き出せませんでした：${error.message}`);
   } finally {
     state.exporting = false;
+    state.exportJob = null;
+    button.title = "PowerPoint で編集できるファイル（.pptx）に書き出します";
     button.textContent = "PowerPoint出力";
     updateTopbar();
   }

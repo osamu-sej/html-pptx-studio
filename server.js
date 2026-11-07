@@ -26,7 +26,7 @@ import { LocalModel } from "./server/local-ai.mjs";
 import { reconcileChatVisuals, slideMeaning } from "./server/visual-relevance.mjs";
 import { imageBrief } from "./server/image-brief.mjs";
 import { extractText, importDeck, importSheets } from "./server/extract.mjs";
-import { exportPptx } from "./server/pptx.mjs";
+import { exportJob, exportPptx, publicExportJob, startExportJob } from "./server/pptx.mjs";
 import { varietyIssues } from "./public/layout-looks.mjs";
 import { createRooms } from "./server/rooms.mjs";
 import { buildTranslatePrompt, checkTranslation, translateRequestSchema, translateResultSchema } from "./server/translate.mjs";
@@ -728,7 +728,42 @@ const httpServer = createServer(async (req, res) => {
     return res.writeHead(204).end();
   }
 
-  // PowerPoint への書き出し: the deck (media inside, as the HTML export carries it) → an editable .pptx.
+  // PowerPoint への書き出し as a job the studio follows: start it, ask how far it got, fetch the file.
+  if (url.pathname === "/api/export/pptx/jobs" && req.method === "POST") {
+    const session = getSession(req, res);
+    try {
+      const body = await readJson(req, 200_000_000);
+      if (!body?.deck || !Array.isArray(body.deck.slides) || !body.deck.slides.length) return json(res, 400, { error: "書き出す資料がありません。" });
+      const job = startExportJob(body.deck, { owner: session.id, base: `http://127.0.0.1:${PORT}`, rootDir: here });
+      return json(res, 202, publicExportJob(job));
+    } catch (error) {
+      return json(res, 422, { error: error.message });
+    }
+  }
+  const exportMatch = url.pathname.match(/^\/api\/export\/pptx\/jobs\/([0-9a-f-]{36})(\/file)?$/);
+  if (exportMatch && (req.method === "GET" || req.method === "DELETE")) {
+    const session = getSession(req, res);
+    const job = exportJob(exportMatch[1], session.id);
+    if (!job) return json(res, 404, { error: "書き出しが見つかりません。もう一度書き出してください。" });
+    if (req.method === "DELETE") {
+      if (!sameOrigin(req)) return json(res, 403, { error: "Origin mismatch" });
+      if (!job.finished) job.controller.abort("取り消しました。");
+      return json(res, 200, publicExportJob(job));
+    }
+    if (!exportMatch[2]) return json(res, 200, publicExportJob(job));
+    if (job.status !== "completed") return json(res, 409, { error: "まだ書き出し中です。" });
+    const name = encodeURIComponent(`${String(job.title || "資料").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80)}.pptx`);
+    res.writeHead(200, {
+      "content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+      "content-disposition": `attachment; filename*=UTF-8''${name}`,
+      "content-length": job.bytes.length,
+      "x-export-stats": JSON.stringify(job.stats ?? {}),
+      "cache-control": "no-store",
+    });
+    return res.end(job.bytes);
+  }
+
+  // PowerPoint への書き出し in one request (scripts): the deck (media inside) → an editable .pptx.
   if (url.pathname === "/api/export/pptx" && req.method === "POST") {
     try {
       const body = await readJson(req, 200_000_000);

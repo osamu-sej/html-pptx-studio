@@ -60,6 +60,12 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       }, 20);
       return;
     }
+    // { "__reconnects": true } is a cut-off answer as Codex really reports it: only "Reconnecting... n/5" (the reason
+    // comes after all its tries, which never end here).
+    if (answer?.__reconnects) {
+      for (const n of [1, 2, 3]) setTimeout(() => send({ method: "error", params: { threadId, turnId: `turn-${turn}`, willRetry: true, error: { message: `Reconnecting... ${n}/5`, codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } } } } }), 20 * n);
+      return;
+    }
     // { "__cutoff": true } is an answer cut off at the output limit that Codex keeps sending again (it never ends).
     if (answer?.__cutoff) {
       setTimeout(() => send({ method: "error", params: { threadId, turnId: `turn-${turn}`, willRetry: true, error: { message: "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens", codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } } } } }), 20);
