@@ -355,3 +355,38 @@ class FilmedEffects(unittest.TestCase):
         els = {e["fx"]: e["el"] for e in self.back["timeline"]}
         self.assertEqual(els["typewriter"], els["shine"])
         self.assertEqual(els["typewriter"], els["fade"])
+
+
+class FilmedBackdrop(unittest.TestCase):
+    """背景の動き comes as the browser's seamless loop: a video behind every part, playing with the slide and looping;
+    importing the file gives the slide its moving backdrop back."""
+
+    @classmethod
+    def setUpClass(cls):
+        loop = {"src": "data:video/mp4;base64," + base64.b64encode(b"\0\0\0\x18ftypmp42" + b"\0" * 64).decode(), "kind": "particles"}
+        cls.data, cls.stats = write_pptx({"theme": {}, "slides": [{"objects": [shape("a"), shape("b", x=500)], "backdropVideo": loop,
+                                                                   "timeline": [{"id": "1", "el": "a", "cls": "in", "fx": "fade", "start": "click", "dur": 500, "delay": 0}]}]})
+        (cls.name, cls.root, cls.raw), = slides_of(cls.data)
+
+    def test_behind_everything_and_valid(self):
+        self.assertTrue(SCHEMA.validate(self.root), [e.message for e in list(SCHEMA.error_log)[:3]])
+        tree = self.raw.find(f"{P}cSld/{P}spTree")
+        parts = [kid for kid in tree if kid.tag not in (P + "nvGrpSpPr", P + "grpSpPr")]
+        self.assertEqual(parts[0].find(f"{P}nvPicPr/{P}cNvPr").get("name"), "背景の動き")
+        self.assertEqual(self.stats["backdrops"], 1)
+
+    def test_plays_with_the_slide_and_loops(self):
+        spid = self.raw.find(f".//{P}pic/{P}nvPicPr/{P}cNvPr").get("id")
+        calls = [c for c in self.raw.iter(f"{P}cTn") if c.get("presetClass") == "mediacall" and next(c.iter(f"{P}spTgt")).get("spid") == spid]
+        self.assertEqual(len(calls), 1)
+        self.assertNotEqual(calls[0].get("nodeType"), "clickEffect")
+        node = next(v for v in self.raw.iter(f"{P}video") if v.find(f".//{P}spTgt").get("spid") == spid)
+        self.assertEqual(node.find(f"{P}cMediaNode/{P}cTn").get("repeatCount"), "indefinite")
+        self.assertEqual(node.find(f"{P}cMediaNode").get("mute"), "1")
+        self.assertFalse(any(c.get("nodeType") == "interactiveSeq" for c in self.raw.iter(f"{P}cTn")))
+
+    def test_importing_gives_the_backdrop_back(self):
+        back = read_pptx_exact(self.data)["slideData"][0]
+        self.assertEqual(back.get("backdrop"), "particles")
+        self.assertNotIn("video", [o["kind"] for o in back["elements"]])
+        self.assertEqual([(e["cls"], e["fx"]) for e in back["timeline"]], [("in", "fade")])

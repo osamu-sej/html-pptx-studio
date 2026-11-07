@@ -99,6 +99,55 @@ async function encodeMp4(frames) {
   }
 }
 
+// 背景の動き: LOOP_MS of it, and FADE_MS more that are blended into its start so the video loops without a jump.
+const LOOP_FPS = 20;
+const LOOP_MS = 8000;
+const FADE_MS = 1000;
+
+/** Pictures as a seamless loop: the last `fade` frames are mixed into the first ones (ffmpeg's blend), then the rest. */
+async function encodeLoop(frames, fade) {
+  const bin = ffmpegBinary();
+  const dir = await mkdtemp(join(tmpdir(), "hpptx-loop-"));
+  try {
+    for (const [i, frame] of frames.entries()) await writeFile(join(dir, `f${String(i).padStart(5, "0")}.png`), frame);
+    const length = frames.length - fade;
+    const out = join(dir, "loop.mp4");
+    const seq = (start) => ["-framerate", String(LOOP_FPS), "-start_number", String(start), "-i", join(dir, "f%05d.png")];
+    // [0]: frames length… (what follows the end), [1]: frames 0… (the start): mixed from the first to the second;
+    // [2]: the frames after the mix. Together: the end runs on into the start.
+    const graph = `[0:v]trim=end_frame=${fade},setpts=PTS-STARTPTS,format=gbrp[a];[1:v]trim=end_frame=${fade},setpts=PTS-STARTPTS,format=gbrp[b];`
+      + `[a][b]blend=all_expr='A*(1-N/${fade})+B*(N/${fade})'[mix];[2:v]trim=start_frame=${fade}:end_frame=${length},setpts=PTS-STARTPTS,format=gbrp[rest];`
+      + "[mix][rest]concat=n=2:v=1:a=0,format=yuv420p,pad=ceil(iw/2)*2:ceil(ih/2)*2[v]";
+    await new Promise((resolve, reject) => {
+      const child = spawn(bin, ["-hide_banner", "-loglevel", "error", "-y", ...seq(length), ...seq(0), ...seq(0),
+        "-filter_complex", graph, "-map", "[v]", "-c:v", "libx264", "-preset", "veryfast", "-crf", "20", "-r", String(LOOP_FPS), "-movflags", "+faststart", "-an", out],
+      { stdio: ["ignore", "ignore", "pipe"] });
+      let err = "";
+      child.stderr.on("data", (chunk) => { err += String(chunk); });
+      child.once("error", reject);
+      child.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `ffmpeg ${code}`))));
+    });
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/** Slide `i`'s moving backdrop as a looping MP4 behind the slide: { src, poster }, or null. */
+async function recordLoop(page, i) {
+  const info = await page.evaluate((index) => window.__pptx.mountLoop(index), i);
+  if (!info?.animations) return null;
+  const fade = Math.round((FADE_MS / 1000) * LOOP_FPS);
+  const count = Math.round((LOOP_MS / 1000) * LOOP_FPS) + fade;
+  const frames = [];
+  for (let k = 0; k < count; k += 1) {
+    await page.evaluate((t) => window.__pptx.seekLoop(t), (k * 1000) / LOOP_FPS);
+    frames.push(await page.screenshot({ type: "png", scale: "css" }));
+  }
+  const mp4 = await encodeLoop(frames, fade);
+  return { src: `data:video/mp4;base64,${mp4.toString("base64")}`, poster: dataUrl(frames[0]) };
+}
+
 /**
  * Film one HTML-only effect of slide `i` (pptx-collect's mountClip / seekClip): its region, frame by frame, as an MP4.
  * Returns { src, poster, box, dur, lasting, loop } for the entry, or null.
@@ -168,6 +217,10 @@ export async function collectModel(deck, { base, timeoutMs = 240_000 }) {
         }
       }
       delete s.clips;
+      if (s.backdrop && ffmpegBinary() && Date.now() - started < timeoutMs) {
+        const got = await recordLoop(page, i).catch((error) => { errors.push(`backdrop: ${error.message}`); return null; });
+        if (got) s.backdropVideo = { ...got, kind: s.backdrop };
+      }
       slides.push(s);
     }
     // The sounds the slides play (画面切り替えのサウンド, an effect's サウンド), made once for the whole deck.

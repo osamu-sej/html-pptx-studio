@@ -25,10 +25,48 @@ const stage = document.getElementById("stage");
 const forClips = new Map();
 let clip = null;
 
-/** An effect only the browser can draw: HTML's own (html: true) or a 3D model's (model: true). */
+/** An effect only the browser can draw: HTML's own (html: true), a 3D model's (model: true), or one with company. */
 function htmlOnly(e) {
+  if (e.with?.length) return true;
   const def = e.cls === "in" || e.cls === "out" ? E.ANIM_IN?.[e.fx] : e.cls === "em" ? E.ANIM_EM?.[e.fx] : null;
   return Boolean(def && (def.html || def.model));
+}
+
+// タイトルの動き (the layout's kinetic title) as an effect on the title's text box: the HTML ones are filmed, the
+// rest are PowerPoint's own word-by-word or letter-by-letter effects.
+const KINETIC_FX = {
+  mask: { fx: "maskRise", dur: 900 }, type: { fx: "typewriter", dur: 1700 }, scramble: { fx: "decode", dur: 1300 },
+  words: { fx: "floatIn", dir: "up", by: "word", dur: 600 }, chars: { fx: "rise", by: "char", dur: 500 }, wave: { fx: "floatIn", dir: "up", by: "char", dur: 500 },
+  zoom: { fx: "zoom", dir: "in", by: "word", dur: 500 }, flip: { fx: "swivel", dir: "h", by: "char", dur: 500 }, slide: { fx: "flyIn", dir: "right", by: "word", dur: 500 },
+};
+let made = 0;
+const madeId = () => `ar${(made += 1).toString(36)}`;
+
+/**
+ * What the layout itself moves as the slide arrives, as animations of the converted parts: the title's motion
+ * (unless the slide's own animations move the title) and the figures that count up — each counts as its item
+ * comes in (filmed with it), or as the slide arrives when nothing brings it in.
+ */
+function arrivalMotion(slide, timeline, { title, counts }, objects) {
+  const out = [...timeline];
+  const membersOf = (key) => objects.filter((o) => o.group === key.slice(4)).map((o) => o.id);
+  const lead = [];
+  const kinetic = E.kineticOf?.(slide, slide.type, deck.motion || {});
+  const kind = kinetic && KINETIC_FX[kinetic];
+  if (kind && title && !out.some((e) => e.el === title)) {
+    const { fx, dur, ...rest } = kind;
+    const entry = { id: madeId(), el: title, cls: "in", fx, start: "with", dur, delay: 120, ...rest };
+    // Word and letter effects are PowerPoint's own on a text box (a group of pieces moves as one).
+    if (title.startsWith("grp:")) delete entry.by;
+    lead.push(entry);
+  }
+  for (const id of counts) {
+    const brings = out.find((e) => e.cls === "in" && (e.el === id || (e.el.startsWith("grp:") && membersOf(e.el).includes(id))));
+    const count = { el: id, cls: "in", fx: "countUp", dur: 1100 };
+    if (brings) brings.with = [...(brings.with || []), count];
+    else lead.push({ id: madeId(), ...count, start: "with", delay: 0 });
+  }
+  return [...lead, ...out];
 }
 
 // Kinds PowerPoint draws itself; the rest are pictures (taken by the server).
@@ -50,10 +88,10 @@ async function dataUrl(src) {
 }
 
 /** Render a slide alone on the stage (full size, at the page's top left) and wait for its fonts and charts. */
-async function mount(slide, index, { clear = false } = {}) {
+async function mount(slide, index, { clear = false, mode = "print" } = {}) {
   stage.replaceChildren();
   stage.classList.toggle("is-clear", clear);
-  const el = E.render(slide, { deck, index, mode: "print", assetBase: "/assets/" });
+  const el = E.render(slide, { deck, index, mode, assetBase: "/assets/" });
   stage.append(el);
   await document.fonts?.ready;
   await wait();
@@ -132,6 +170,7 @@ window.__pptx = {
     let objects;
     let timeline = slide.timeline || [];
     let whole = false;
+    let arrival = null;
     if (slide.type === "blank") {
       objects = clone(slide.elements || []);
       const el = await mount(slide, index);
@@ -149,11 +188,13 @@ window.__pptx = {
       const made = convertedSlide(slide, result.objects, result.timeline);
       objects = clone(made.elements || []);
       timeline = made.timeline || [];
+      arrival = { title: result.fields?.["@title"] || null, counts: result.counts || [] };
     }
     if (!objects.length && slide.type !== "blank") whole = true;
     if (deck.masterObjects?.length && !slide.hideMaster) objects = [...clone(deck.masterObjects).map((o) => ({ ...o, master: true })), ...objects];
     // The animations as the show plays them: known effects on parts that are on this slide, numbers in range.
     timeline = E.normalizeTimeline?.(timeline, { elements: objects }) ?? [];
+    if (arrival) timeline = arrivalMotion(slide, timeline, arrival, objects);
     const transition = slide.transition || deck.transition || "fade";
     // 変形: the parts the studio carries from the slide before (written with one name on both, "!!…").
     const morph = transition === "morph" && previous?.index === index - 1 && E.morphPairs
@@ -175,6 +216,8 @@ window.__pptx = {
     const background = slide.background ? { ...slide.background, ...(slide.background.image ? { image: await dataUrl(slide.background.image) } : {}) } : null;
     return {
       objects, timeline, background, whole, rasters, morph, clips,
+      // 背景の動き: filmed as a looping video behind the slide (recordLoop).
+      backdrop: (slide.type === "blank" && !slide.backdrop) || slide.master === "source" ? null : E.backdropOf?.(slide, slide.type, deck.motion || {}) || null,
       notes: slide.notes || "", hidden: Boolean(slide.hidden),
       transition, transitionDir: slide.transitionDir || null, transitionDur: Number(slide.transitionDur) || null,
       transitionSound: slide.transitionSound || null, advance: slide.advance ?? null,
@@ -241,8 +284,10 @@ window.__pptx = {
     // Only what lies under the part (and the part): what lies above it stays above the video in PowerPoint.
     const elements = saved.objects.slice(0, last + 1).filter((o, i) => members(o) || i < saved.objects.findIndex(members));
     const indefinite = entry.repeat === "click" || entry.repeat === "slide";
-    const one = { ...entry, start: "click", delay: 0, trigger: undefined, after: undefined, sound: undefined, ...(indefinite ? { repeat: undefined } : {}) };
-    const slide = { type: "blank", title: "", hideTitle: true, hideMaster: true, elements, timeline: [one], ...(background ? { background } : {}) };
+    const one = { ...entry, start: "click", delay: 0, trigger: undefined, after: undefined, sound: undefined, with: undefined, ...(indefinite ? { repeat: undefined } : {}) };
+    // What moves with it (a figure counting up as its item comes in) is filmed in the same video.
+    const company = (entry.with || []).map((w, k) => ({ ...w, id: `${entry.id}w${k}`, start: "with", delay: 0 }));
+    const slide = { type: "blank", title: "", hideTitle: true, hideMaster: true, elements, timeline: [one, ...company], ...(background ? { background } : {}) };
     stage.replaceChildren();
     stage.classList.remove("is-clear");
     const el = E.render(slide, { deck, index, mode: "present", assetBase: "/assets/" });
@@ -279,6 +324,27 @@ window.__pptx = {
     const h = Math.min(1080, Math.ceil(box.y2 + room)) - y;
     const def = entry.cls === "em" ? E.ANIM_EM?.[entry.fx] : E.ANIM_IN?.[entry.fx];
     return { dur: Math.max(1, Math.round(length)), box: { x, y, w: w - (w % 2), h: h - (h % 2) }, lasting: Boolean(entry.cls === "em" && def?.lasting), loop: indefinite };
+  },
+
+  /**
+   * 背景の動き alone (the ground, the theme's art and the moving backdrop, without the content), ready to be filmed as
+   * a loop: its CSS animations held where they are and moved on by seekLoop.
+   */
+  async mountLoop(index) {
+    const slide = deck.slides[index];
+    // Drawn as the show draws it (a static page has no moving backdrop), the content hidden.
+    const el = await mount({ ...slide, elements: [], timeline: undefined }, index, { mode: "present" });
+    el.classList.add("hs-only-decor");
+    await wait();
+    const list = (el.getAnimations ? el.getAnimations({ subtree: true }) : document.getAnimations()).map((a) => { a.pause(); return { a, at: Number(a.currentTime) || 0 }; });
+    clip = { el, anims: () => [], loop: list };
+    return { animations: list.length };
+  },
+
+  /** The filmed backdrop `t` ms on from where it was mounted. */
+  async seekLoop(t) {
+    for (const { a, at } of clip?.loop || []) { try { a.currentTime = at + t; } catch { /* gone */ } }
+    await wait();
   },
 
   /** The filmed effect at `t` ms (its frames drawn for that moment). */
