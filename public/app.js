@@ -1854,13 +1854,14 @@ function setMode(mode) {
 
 function updateTopbar() {
   const editing = state.mode === "edit" && Boolean(state.deck);
-  for (const id of ["deckTitleInput", "saveDeckBtn", "shareBtn", "undoBtn", "redoBtn", "presentBtn", "pdfBtn", "downloadBtn", "moreMenu"]) $(id).classList.toggle("hidden", !editing);
+  for (const id of ["deckTitleInput", "saveDeckBtn", "shareBtn", "undoBtn", "redoBtn", "presentBtn", "pdfBtn", "pptxBtn", "downloadBtn", "moreMenu"]) $(id).classList.toggle("hidden", !editing);
   $("saveDeckBtn").textContent = state.savedDeckId ? "上書き保存" : "資料を保存";
   $("deckReviseBtn").classList.toggle("hidden", !editing || !state.codexAuthorized);
   $("deckReviseBtn").disabled = state.aiBusy;
   $("undoBtn").disabled = !state.undo.length;
   $("redoBtn").disabled = !state.redo.length;
   $("downloadBtn").disabled = Boolean(state.exporting);
+  $("pptxBtn").disabled = Boolean(state.exporting);
 }
 
 function renderAll() {
@@ -2570,6 +2571,7 @@ const editorApp = {
   openSlideJson: () => openCodeDialog("json"),
   openSlideHtml: () => openCodeDialog("html"),
   exportHtml: () => exportHtml(),
+  exportPptx: () => exportPptx(),
   saveJson: () => saveJsonFile(),
   openJson: () => openJsonDialog(),
   printPdf: () => printPdf(),
@@ -5635,6 +5637,7 @@ function commandList() {
     list.push(
       cmd("資料", "▶", "最初から発表する", () => openPresenter(0), "F5"),
       cmd("資料", "▶", "このスライドから発表する", () => openPresenter(state.selected), "⇧F5"),
+      cmd("資料", "⤓", "PowerPoint に書き出す（.pptx・編集できる）", () => exportPptx()),
       cmd("資料", "⤓", "HTMLファイルに書き出す（動きごと）", () => exportHtml()),
       cmd("資料", "⎙", "PDFとして保存・印刷", () => printPdf()),
       cmd("資料", "✓", "チェック結果を見る", () => openCheckDialog(false)),
@@ -6230,7 +6233,7 @@ async function exportHtml({ checked = false, password = null } = {}) {
     await measureAll();
     const problems = validateForExport();
     const warnings = checkItems().filter((item) => item.severity !== "info");
-    if (problems.length || warnings.length) return openCheckDialog(true);
+    if (problems.length || warnings.length) { state.pendingExport = "html"; return openCheckDialog(true); }
   }
   state.exporting = true;
   const button = $("downloadBtn");
@@ -6255,6 +6258,41 @@ async function exportHtml({ checked = false, password = null } = {}) {
   } finally {
     state.exporting = false;
     button.textContent = "HTML出力";
+    updateTopbar();
+  }
+}
+
+/**
+ * PowerPoint出力: the deck (media inside, as the HTML export carries it) goes to the server, which draws it in a
+ * headless browser and writes an editable .pptx (server/pptx.mjs, tools/pptx_export.py).
+ */
+async function exportPptx({ checked = false } = {}) {
+  if (!state.deck || state.exporting) return;
+  if (!checked) {
+    await measureAll();
+    if (validateForExport().length) { state.pendingExport = "pptx"; return openCheckDialog(true); }
+  }
+  state.exporting = true;
+  const button = $("pptxBtn");
+  button.textContent = "書き出し中…";
+  updateTopbar();
+  try {
+    const { deck, missing } = await portableDeck();
+    if (deck.slides[0].type === "title" && !deck.slides[0].date) deck.slides[0].date = new Date().toLocaleDateString("ja-JP", { year: "numeric", month: "long", day: "numeric" });
+    const response = await fetch("/api/export/pptx", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ deck }) });
+    if (!response.ok) throw new Error((await response.json().catch(() => ({}))).error || `HTTP ${response.status}`);
+    const fileName = `${fileSafe(deck.title, "presentation")}_${today()}.pptx`;
+    await downloadBlob(await response.blob(), fileName);
+    state.historyId = saveHistory({ exported: fileName });
+    let stats = {};
+    try { stats = JSON.parse(response.headers.get("x-export-stats") || "{}"); } catch { /* none */ }
+    const pictures = stats.rasterized ? `（PowerPoint にない部品${stats.rasterized}か所は図として入れました）` : "";
+    toast(`PowerPoint に書き出しました${pictures}${missing.length ? `。${missing.join("・")}枚目の写真・動画は見つからなかったので外しました` : ""}`);
+  } catch (error) {
+    toast(`PowerPoint に書き出せませんでした：${error.message}`);
+  } finally {
+    state.exporting = false;
+    button.textContent = "PowerPoint出力";
     updateTopbar();
   }
 }
@@ -6768,6 +6806,7 @@ function bind() {
   $("shareBtn").addEventListener("click", () => (coedit.active ? coedit.showMenu() : coedit.start()));
   $("shareCopy").addEventListener("click", async () => { try { await navigator.clipboard.writeText($("shareLink").value); $("shareStatus").textContent = "コピーしました"; } catch { $("shareLink").select(); document.execCommand("copy"); $("shareStatus").textContent = "コピーしました"; } });
   $("downloadBtn").addEventListener("click", () => exportHtml());
+  $("pptxBtn").addEventListener("click", () => exportPptx());
   $("fixAllBtn").addEventListener("click", fixAllOverflow);
   $("deckReviseBtn").addEventListener("click", () => openRewriteDialog());
   $("rewriteSubmit").addEventListener("click", rewriteDeck);
@@ -6830,7 +6869,8 @@ function bind() {
     else if (event.key === "ArrowUp") { event.preventDefault(); state.commandActive = Math.max(0, state.commandActive - 1); renderCommands(); }
     else if (event.key === "Enter" && !event.isComposing) { event.preventDefault(); const item = items[state.commandActive]; if (item) runCommand(item); }
   });
-  $("exportCheckGoBtn").addEventListener("click", () => { $("exportCheckDialog").close(); exportHtml({ checked: true }); });
+  // このまま出力: the export the check was opened for (PowerPoint or HTML).
+  $("exportCheckGoBtn").addEventListener("click", () => { $("exportCheckDialog").close(); if (state.pendingExport === "pptx") exportPptx({ checked: true }); else exportHtml({ checked: true }); });
   $("exportCheckFixBtn").addEventListener("click", () => $("exportCheckDialog").close());
   document.addEventListener("click", (event) => { for (const menu of document.querySelectorAll(".more-menu[open]")) if (!menu.contains(event.target) || event.target.closest(".menu .btn")) menu.open = false; });
   $("notesBtn").addEventListener("click", openNotesDialog);

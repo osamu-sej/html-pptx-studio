@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <title>PowerPoint 書き出し</title>
+  <!-- The server's headless browser draws slides here to write a PowerPoint (server/pptx.mjs, editor/pptx-collect.mjs). -->
+  <link rel="stylesheet" href="/engine/engine.css?v=__APP_VERSION__">
+  <style>
+    html, body { margin: 0; padding: 0; background: transparent; }
+    #stage { position: absolute; left: 0; top: 0; width: 1920px; height: 1080px; overflow: hidden; }
+    /* A clear slide: only the object being photographed shows (no ground, no decoration, no footer). */
+    #stage.is-clear .hs-slide { background: transparent !important; }
+    #stage.is-clear .hs-decor, #stage.is-clear .hs-foot, #stage.is-clear .hs-frame, #stage.is-clear .hs-bg { display: none !important; }
+    /* The theme's art alone: the decoration over the ground, nothing of the slide's content. */
+    .hs-only-decor > :not(.hs-decor):not(.hs-bg) { visibility: hidden !important; }
+    /* PowerPoint sets Japanese without proportional punctuation ("palt"): measure the words as it will set them. */
+    .hs-slide, .hs-slide * { font-feature-settings: normal !important; }
+    /* Nothing moves while it is photographed. */
+    #stage *, #stage *::before, #stage *::after { animation-play-state: paused !important; transition: none !important; }
+  </style>
+</head>
+<body>
+  <div id="stage"></div>
+  <script src="/engine/engine.js?v=__APP_VERSION__"></script>
+  <script src="/engine/objects.js?v=__APP_VERSION__"></script>
+  <script src="/engine/animate.js?v=__APP_VERSION__"></script>
+  <script src="/engine/motion.js?v=__APP_VERSION__"></script>
+  <script src="/engine/models.js?v=__APP_VERSION__"></script>
+  <script type="module" src="/editor/pptx-collect.mjs?v=__APP_VERSION__"></script>
+</body>
+</html>

@@ -742,6 +742,7 @@ export function createEditorUi(editor, app) {
       { label: "上書き保存", icon: "down", keys: "⌘S", run: () => app.saveDeck() },
       { label: "名前を付けて保存（別の資料として）", icon: "duplicate", run: () => app.saveDeck({ asNew: true }) },
       "-", { head: "書き出し" },
+      { label: "PowerPoint（.pptx・編集できる）", icon: "slide", run: () => app.exportPptx() },
       { label: "HTMLファイル（動きごと）", icon: "play", run: () => app.exportHtml() },
       { label: "PDF・印刷（配布資料・ノート）…", icon: "print", keys: "⌘P", run: () => app.printPdf() },
       { label: "JSONで保存", icon: "down", run: () => app.saveJson() },
@@ -1658,6 +1659,7 @@ export function createEditorUi(editor, app) {
         col(btn("down", "JSONで保存", "資料全体をJSONファイルに保存（別のPCで続きを編集できます）", () => app.saveJson()),
           btn("up", "JSONを読み込む", "JSONから資料を開く", () => app.openJson()))),
       group("書き出し",
+        btn("slide", "PowerPoint|出力", "PowerPoint で編集できるファイル（.pptx）に書き出す", () => app.exportPptx(), { big: true }),
         btn("play", "HTML出力", "動きごと1つのHTMLファイルに書き出す", () => app.exportHtml(), { big: true }),
         btn("slide", "PDF", "PDFとして保存・印刷", () => app.printPdf(), { big: true })),
     ];

@@ -46,6 +46,7 @@
   "dependencies": {
     "@openai/codex": "0.144.1",
     "lottie-web": "5.13.0",
+    "playwright-core": "1.56.1",
     "polygon-clipping": "^0.15.7",
     "qrcode-generator": "2.0.4",
     "three": "0.186.1",

@@ -1,0 +1,128 @@
+// PowerPoint出力 in a real browser: the sample deck goes to the server, which draws it in its headless browser and writes
+// an editable .pptx (server/pptx.mjs, tools/pptx_export.py). The download is opened with python-pptx and checked: every
+// slide, the theme as a PowerPoint theme, titles and key messages as text, layouts as shapes, a native chart, a picture
+// for what PowerPoint has no part for; a 白紙 page keeps its own objects; a check finding asks first and continues the
+// PowerPoint export (not the HTML one).
+// Usage: node qa/studio-pptx.mjs [--base=http://127.0.0.1:8787]   (with `npm start` running)
+import { execFileSync } from "node:child_process";
+import { mkdir } from "node:fs/promises";
+import { join } from "node:path";
+import { fileURLToPath } from "node:url";
+import { createRequire } from "node:module";
+
+const require = createRequire(import.meta.url);
+process.env.PLAYWRIGHT_DISABLE_FORCED_CHROMIUM_PROXIED_LOOPBACK = "1";
+const { chromium } = require(process.env.PLAYWRIGHT_MODULE || "/opt/node22/lib/node_modules/playwright");
+const root = fileURLToPath(new URL("..", import.meta.url));
+const args = Object.fromEntries(process.argv.slice(2).map((arg) => arg.replace(/^--/, "").split("=")));
+const base = args.base || "http://127.0.0.1:8787";
+const python = process.env.PYTHON_BIN || "python3";
+const outDir = join(root, "qa", "out");
+await mkdir(outDir, { recursive: true });
+
+const browserArgs = process.env.PROXY_CA_SPKI ? [`--ignore-certificate-errors-spki-list=${process.env.PROXY_CA_SPKI}`] : [];
+const browser = await chromium.launch({ executablePath: process.env.CHROME_PATH || "/opt/pw-browsers/chromium", proxy: process.env.HTTPS_PROXY ? { server: process.env.HTTPS_PROXY, bypass: "127.0.0.1,localhost" } : undefined, args: browserArgs });
+const context = await browser.newContext({ viewport: { width: 1600, height: 1000 }, acceptDownloads: true });
+const page = await context.newPage();
+const errors = [];
+page.on("pageerror", (error) => errors.push(`pageerror: ${error.message}`));
+page.on("console", (message) => { if (message.type() === "error" && !/ERR_TUNNEL|ytimg|ERR_CERT|fonts\.g/.test(`${message.text()} ${message.location().url}`)) errors.push(`console: ${message.text()} ${message.location().url}`); });
+const shot = async (name) => { const file = join(outDir, `pptx-${name}.png`); await page.screenshot({ path: file }); console.log("saved", file); };
+const step = async (label, fn) => {
+  try { await fn(); console.log("ok  ", label); } catch (error) { errors.push(`${label}: ${error.message}`); console.log("FAIL", label, error.message); await shot(`fail-${errors.length}`).catch(() => {}); }
+  if (await page.isVisible("dialog[open]")) await page.keyboard.press("Escape");
+};
+const assert = (ok, message) => { if (!ok) throw new Error(message); };
+
+/** What python-pptx reads in a .pptx: slides with their shapes (kind, words), the theme's accent and fonts. */
+function inspect(file) {
+  const code = `
+import json, sys
+from pptx import Presentation
+from lxml import etree
+A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+prs = Presentation(sys.argv[1])
+theme = etree.fromstring(prs.slide_master.part.part_related_by("http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme").blob)
+out = {"size": [prs.slide_width, prs.slide_height], "accent1": theme.find(f".//{A}accent1/{A}srgbClr").get("val"),
+       "major": theme.find(f".//{A}majorFont/{A}ea").get("typeface"), "slides": []}
+for s in prs.slides:
+    shapes = []
+    for sh in s.shapes:
+        kind = "chart" if sh.has_chart else "table" if sh.has_table else "picture" if sh.shape_type == 13 else "text" if sh.has_text_frame else str(sh.shape_type)
+        shapes.append({"kind": kind, "text": sh.text_frame.text if sh.has_text_frame else ""})
+    out["slides"].append({"shapes": shapes, "notes": s.notes_slide.notes_text_frame.text if s.has_notes_slide else ""})
+print(json.dumps(out, ensure_ascii=False))`;
+  return JSON.parse(execFileSync(python, ["-c", code, file]).toString());
+}
+
+async function exportFile(name, click) {
+  const [download] = await Promise.all([page.waitForEvent("download", { timeout: 180_000 }), click()]);
+  const file = join(outDir, name);
+  await download.saveAs(file);
+  return file;
+}
+
+await page.goto(base);
+await page.evaluate(() => localStorage.clear());
+await page.goto(base);
+
+let sample = null;
+await step("the sample deck goes out as an editable PowerPoint (the top bar's PowerPoint出力)", async () => {
+  await page.click("#sampleDeckBtn");
+  await page.waitForFunction(() => document.querySelectorAll(".film-item").length >= 40, null, { timeout: 20000 });
+  sample = await page.evaluate(() => JSON.parse(JSON.stringify(window.__hpptx.deck())));
+  // Ten slides are enough to see every kind of part (and keep the run short): the first nine and the closing.
+  await page.evaluate(() => { const d = window.__hpptx.deck(); d.slides.splice(9, d.slides.length - 10); });
+  sample.slides.splice(9, sample.slides.length - 10);
+  await page.click(".film-item:nth-child(1)");
+  await page.waitForSelector("#pptxBtn:not([hidden])");
+  const file = await exportFile("export-sample.pptx", async () => {
+    await page.click("#pptxBtn");
+    // A finding asks first; この­まま出力 goes on with the PowerPoint (not the HTML) export.
+    const asked = await page.waitForSelector("#exportCheckDialog[open]", { timeout: 4000 }).then(() => true).catch(() => false);
+    if (asked) await page.click("#exportCheckGoBtn");
+  });
+  await page.waitForFunction(() => /PowerPoint に書き出しました/.test(document.body.textContent), null, { timeout: 30000 });
+  const got = inspect(file);
+  assert(got.size[0] === 12192000 && got.size[1] === 6858000, `16:9: ${got.size}`);
+  assert(got.slides.length === 10, `every slide: ${got.slides.length}`);
+  const accent = await page.evaluate(() => window.SlideEngine.themeColors(window.__hpptx.deck().theme).accent1.slice(1).toUpperCase());
+  assert(got.accent1 === accent, `the theme's accent as PowerPoint's アクセント 1: ${got.accent1} / ${accent}`);
+  const words = (i) => got.slides[i].shapes.map((s) => s.text).join(" ");
+  const titles = sample.slides.slice(0, 10).map((s) => (s.title || "").replace(/\*\*/g, ""));
+  for (const [i, title] of titles.entries()) if (title && sample.slides[i].type !== "section") assert(words(i).replace(/\s/g, "").includes(title.replace(/\s/g, "")), `slide ${i + 1} has its title as text: ${title} / ${words(i).slice(0, 120)}`);
+  const takeaway = (sample.slides[1].takeaway || "").replace(/\*\*/g, "");
+  assert(words(1).replace(/\s/g, "").includes(takeaway.replace(/\s/g, "").slice(0, 10)), "the key message as text");
+  const kinds = got.slides.flatMap((s) => s.shapes.map((x) => x.kind));
+  assert(kinds.filter((k) => k === "text").length > 60, `the layouts as shapes and text boxes: ${kinds.filter((k) => k === "text").length}`);
+  assert(kinds.includes("chart"), "a chart PowerPoint can edit");
+  assert(got.slides.some((s, i) => sample.slides[i].notes && s.notes === sample.slides[i].notes), "speaker notes");
+});
+
+await step("a 白紙 page keeps its own objects (a shape with words, a table) and an icon becomes a picture", async () => {
+  await page.evaluate(() => {
+    const d = window.__hpptx.deck();
+    d.slides.splice(1, 9);
+    d.slides.push({ type: "blank", title: "", hideTitle: true, elements: [
+      { id: "qs", kind: "shape", shape: "roundRect", x: 200, y: 200, w: 700, h: 300, text: "<p>手で置いた図形</p>", fs: 48 },
+      { id: "qt", kind: "table", x: 1000, y: 200, w: 700, h: 300, cols: [0.5, 0.5], rows: [0.5, 0.5], cells: [[{ text: "<p>項目</p>" }, { text: "<p>値</p>" }], [{ text: "<p>A</p>" }, { text: "<p>1</p>" }]] },
+      { id: "qi", kind: "icon", icon: "check", x: 200, y: 700, w: 160, h: 160 },
+    ] });
+  });
+  await page.evaluate(() => window.__hpptx.deck().slides.length);
+  const file = await exportFile("export-blank.pptx", async () => {
+    await page.click("#pptxBtn");
+    const asked = await page.waitForSelector("#exportCheckDialog[open]", { timeout: 4000 }).then(() => true).catch(() => false);
+    if (asked) await page.click("#exportCheckGoBtn");
+  });
+  const got = inspect(file);
+  const last = got.slides.at(-1).shapes;
+  assert(last.some((s) => s.kind === "text" && /手で置いた図形/.test(s.text)), `the shape's words: ${JSON.stringify(last)}`);
+  assert(last.some((s) => s.kind === "table"), "the table");
+  assert(last.some((s) => s.kind === "picture"), "the icon as a picture");
+  await shot("after-export");
+});
+
+console.log(errors.length ? `errors:\n${errors.join("\n")}` : "no errors");
+await browser.close();
+process.exit(errors.length ? 1 : 0);
