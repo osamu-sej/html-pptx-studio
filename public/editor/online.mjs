@@ -96,7 +96,8 @@ export function createOnline(app) {
     await app.openPresenter(start, {
       custom,
       extra: {
-        onChange: ({ index, step }) => sendState({ index, step: Number.isFinite(step) ? step : 10_000, sid: app.deck()?.slides[index]?.sid }),
+        // Only while the show is on: a move the closing player reports after it ended must not bring the viewers back.
+        onChange: ({ index, step }) => { if (live?.presenting) sendState({ index, step: Number.isFinite(step) ? step : 10_000, sid: app.deck()?.slides[index]?.sid }); },
         onCaption: (text) => sendCaption(text),
         // The presenter's clicks on a poll do not answer it: the viewers do.
         onVote: () => { app.toast("アンケートの回答は視聴者から集めています"); return false; },
