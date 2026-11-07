@@ -223,6 +223,17 @@ await step("crop a picture on the stage (drag a mark, Enter keeps it)", async ()
   await ribbon("トリミング");
   await page.waitForSelector(".ed-crop-box");
   const mark = await page.locator(".ed-crop-e").boundingBox();
+  if (!mark) {
+    // What the stage shows instead (CI only has failed here): the crop overlay, the picture and the window.
+    const info = await page.evaluate(() => ({
+      win: [innerWidth, innerHeight],
+      head: document.querySelector("header")?.getBoundingClientRect().height,
+      wrap: document.querySelector(".slide-wrap")?.getBoundingClientRect().toJSON(),
+      crop: [...document.querySelectorAll(".ed-crop-box, .ed-crop-box *")].slice(0, 12).map((el) => `${el.className?.baseVal ?? el.className} ${JSON.stringify(el.getBoundingClientRect().toJSON())}`),
+      image: window.__hpptx.slide().elements.filter((o) => o.kind === "image").map(({ src, ...o }) => o),
+    }));
+    throw new Error(`no crop mark: ${JSON.stringify(info)}`);
+  }
   await page.mouse.move(mark.x + mark.width / 2, mark.y + mark.height / 2);
   await page.mouse.down();
   await page.mouse.move(mark.x - 80, mark.y + mark.height / 2, { steps: 6 });
