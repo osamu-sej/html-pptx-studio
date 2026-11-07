@@ -90,7 +90,7 @@ async function withFakeCodex(answers, fn, env = {}) {
     await new Promise((resolve) => setTimeout(resolve, 150));
     const status = await (await server.request("/api/codex/status")).json();
     assert.equal(status.authorized, true);
-    await fn(server, async () => JSON.parse(await readFile(promptPath, "utf8")));
+    await fn(server, async () => JSON.parse(await readFile(promptPath, "utf8")), async () => JSON.parse(await readFile(`${promptPath}.turns`, "utf8")));
   } finally {
     await server.stop();
     await rm(dir, { recursive: true, force: true });
@@ -882,28 +882,52 @@ test("a long deck is written a few slides at a time: from an outline, or when an
     assert.match(sent[0], /全8枚のうち1〜4枚目だけ/);
     assert.match(sent[1], /全8枚のうち5〜8枚目だけ/);
   });
-  // Without an outline the deck is asked for at once; an answer cut off at the output limit is asked again in parts.
-  const tooLong = { __fail: { message: "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens" } };
-  await withFakeCodex([tooLong, part(1, 4), part(5, 8)], async (server, prompts) => {
+  // Without an outline the deck is asked for at once. An answer cut off at the output limit (Codex would send the
+  // same request again and again) is asked again at once in a new thread without the strict output format; cut off
+  // again, it is asked in parts.
+  const cutoff = { __cutoff: true };
+  await withFakeCodex([cutoff, cutoff, part(1, 4), { __raw: `前置き ${JSON.stringify(part(5, 8))}` }], async (server, prompts, turns) => {
     const started = await (await server.postJson("/api/decks", { brief: "テスト", settings: { slideCount: 8, textDensity: "standard" } })).json();
     assert.ok(started.jobId, JSON.stringify(started));
     const job = await waitForJob(server, started.jobId);
     assert.equal(job.status, "completed", job.error);
     assert.equal(job.deck.slideData.length, 8);
     const sent = await prompts();
-    assert.equal(sent.length, 3);
-    assert.doesNotMatch(sent[0], /何回かに分けて/);
-    assert.match(sent[1], /4枚ずつ何回かに分けて/);
-    assert.match(sent[2], /5〜8枚目だけ/);
+    const sentTurns = await turns();
+    assert.equal(sent.length, 4);
+    assert.deepEqual(sentTurns.map((t) => t.schema), [true, false, false, false]);
+    assert.equal(new Set(sentTurns.slice(0, 3).map((t) => t.thread)).size, 3, "each cut-off answer is asked again in a new thread");
+    assert.equal(sentTurns[3].thread, sentTurns[2].thread);
+    assert.deepEqual(sentTurns.map((t) => t.effort), ["medium", "low", "low", "low"]);
+    assert.doesNotMatch(sent[0], /何回かに分けて|# 回答の形式/);
+    assert.match(sent[1], /# 回答の形式/);
+    assert.match(sent[1], /SlideDataItem/);
+    assert.doesNotMatch(sent[1], /何回かに分けて/);
+    assert.match(sent[2], /4枚ずつ何回かに分けて/);
+    assert.match(sent[2], /# 回答の形式/);
+    assert.match(sent[3], /5〜8枚目だけ/);
+    assert.doesNotMatch(sent[3], /# 回答の形式/);
   });
-  // A part that still does not fit is asked again two slides at a time; a whole deck in a part keeps its own slides.
-  await withFakeCodex([part(1, 4), tooLong, deck, part(7, 8)], async (server, prompts) => {
+  // A part that still does not fit is asked again two slides at a time in a new thread, with the slides already
+  // written; a whole deck in a part keeps its own slides; a part with a broken slide is asked again.
+  const tooLong = { __fail: { message: "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens" } };
+  const broken = part(7, 8);
+  broken.slideData = [{ ...broken.slideData[0], type: "agenda", items: undefined }, broken.slideData[1]];
+  await withFakeCodex([part(1, 4), tooLong, tooLong, deck, broken, part(7, 8)], async (server, prompts, turns) => {
     const job = await waitForJob(server, (await (await server.postJson("/api/decks", input)).json()).jobId);
     assert.equal(job.status, "completed", job.error);
     assert.deepEqual(job.deck.slideData.map((s) => s.title), deck.slideData.map((s) => s.title));
     const sent = await prompts();
-    assert.match(sent[2], /途中で切れました/);
-    assert.match(sent[2], /5〜6枚目だけ/);
-    assert.match(sent[3], /7〜8枚目だけ/);
+    const sentTurns = await turns();
+    assert.equal(sent.length, 6);
+    assert.match(sent[2], /5〜8枚目だけ/);
+    assert.match(sent[2], /1〜4枚目は書き終えている/);
+    assert.match(sent[3], /途中で切れました/);
+    assert.match(sent[3], /2枚ずつ/);
+    assert.match(sent[3], /5〜6枚目だけ/);
+    assert.match(sent[4], /7〜8枚目だけ/);
+    assert.match(sent[5], /問題がありました/);
+    assert.match(sent[5], /7枚目（agenda）/);
+    assert.equal(sentTurns[4].thread, sentTurns[3].thread);
   });
 });

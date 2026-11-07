@@ -8,6 +8,7 @@ import { LOOK_ADVICE, LOOKS, maxSameLook } from "../public/layout-looks.mjs";
 import { drillParents } from "./chat.mjs";
 import { slideMeaning } from "./visual-relevance.mjs";
 import { objectsSummary } from "./objects.mjs";
+import { schemaSketch } from "./schema-sketch.mjs";
 
 const DEFAULT_TIMEOUT_MS = 30_000;
 const ICONS = Object.fromEntries(Object.entries(JSON.parse(readFileSync(new URL("../public/engine/icons.json", import.meta.url), "utf8"))).map(([key, value]) => [key, value.label]));
@@ -23,20 +24,31 @@ function partRange(job) {
 
 /** What to ask for the next part of a deck written in parts (the first comes after the whole request). */
 export function partPrompt(job, { first = false, note = "" } = {}) {
-  const { total, size } = job.parts;
+  const { total, size, done } = job.parts;
   const [from, to] = partRange(job);
   const last = to === total ? "最後のスライドは type を closing にする。" : "";
   if (first) {
+    // A new thread (the first part, or after an answer was cut off): the whole request, then what is already written.
+    const written = done.length ? ["", `1〜${done.length}枚目は書き終えている（下の一覧）。話の流れ・用語・数値をこれにそろえ、繰り返さない。`,
+      ...done.map((slide, index) => `${index + 1}. [${slide.type}] ${slide.title ?? ""}${slide.takeaway ? ` — ${slide.takeaway}` : ""}`)] : [];
     return [job.basePrompt, "", "# 書き方（何回かに分けて返す）",
       `資料全体は${total}枚（枚数の指示は資料全体の枚数）。1回の回答に入りきらないので、${size}枚ずつ何回かに分けて書く。`,
-      `今回は全${total}枚のうち${from}〜${to}枚目だけを slideData に入れて返す（slideData 以外の項目もいつもどおり入れる）。続きはこのあと頼む。${last}`].join("\n");
+      ...written,
+      `今回は全${total}枚のうち${from}〜${to}枚目だけを slideData に入れて返す（slideData 以外の項目もいつもどおり入れる）。続きはこのあと頼む。${last}`, note].filter(Boolean).join("\n");
   }
   return [note, `続けて、全${total}枚のうち${from}〜${to}枚目だけを slideData に入れて返す（slideData 以外の項目は前と同じでよい）。`,
     `これまでに書いたスライドと話の流れ・用語・数値をそろえ、書いたスライドは繰り返さない。${last}`].filter(Boolean).join("\n");
 }
 
 /** Codex stopped because the answer did not fit (the model's output limit). */
-const tooLong = (error) => /max_output_tokens/i.test(`${error?.message ?? ""} ${JSON.stringify(error?.codexErrorInfo ?? "")}`);
+export const tooLong = (error) => /max_output_tokens/i.test(`${error?.message ?? ""} ${JSON.stringify(error?.codexErrorInfo ?? "")}`);
+
+/** What a turn without the output format asks for instead (the format written out short, see schema-sketch.mjs). */
+export function formatLines(schema) {
+  return ["", "# 回答の形式",
+    "回答は次の形の JSON オブジェクト1つだけにする（説明文・Markdown・コードブロックは付けない）。`名前?:` の項目は省いてよく、値のない項目は書かない。文字の長さは上の指示に従う。",
+    schemaSketch(schema)].join("\n");
+}
 
 function errorKind(error) {
   const info = error?.codexErrorInfo;
@@ -47,6 +59,8 @@ function errorKind(error) {
 export function friendlyCodexError(error) {
   const original = error?.message ?? "";
   const kind = errorKind(error);
+  // Reported as a dropped stream, but nothing is wrong with the connection: the answer was too long.
+  if (tooLong(error)) return `回答が長すぎて、Codexの1回の出力の上限で途中で切れました。枚数か文字量を減らすか、骨子を作ってから生成してください。（${original}）`;
   const plain = {
     usageLimitExceeded: "Codexの利用上限に達しました（接続しているChatGPTアカウントのプランの上限）。上限が回復するまで待つか、ChatGPTの利用状況を確認してください。",
     unauthorized: "Codexとの接続が切れました。画面右上から接続し直してください。",
@@ -75,7 +89,17 @@ export function parseDeckResult(text) {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/, "")
     .trim();
-  return JSON.parse(trimmed);
+  try {
+    return JSON.parse(trimmed);
+  } catch (error) {
+    // Without the output format the answer may come with a sentence around the JSON.
+    const start = trimmed.indexOf("{");
+    const end = trimmed.lastIndexOf("}");
+    if (start > 0 || (start === 0 && end < trimmed.length - 1)) {
+      if (end > start) return JSON.parse(trimmed.slice(start, end + 1));
+    }
+    throw error;
+  }
 }
 
 export function omitNullObjectValues(value) {
@@ -766,8 +790,8 @@ export class CodexSlideServer extends EventEmitter {
    * `finalize(parsed, attempt)` returns { result, detail } to finish, or
    * { retry: prompt, detail, fallback? } to ask Codex for a corrected answer.
    */
-  async runJob(job, { prompt, outputSchema, finalize, maxAttempts = 2, effort = "medium", codex = job.useCodex !== false, parts = null, partsTotal = null }) {
-    job.plan = { outputSchema, finalize, maxAttempts, effort, partsTotal: parts?.total ?? partsTotal };
+  async runJob(job, { prompt, outputSchema, finalize, maxAttempts = 2, effort = "medium", codex = job.useCodex !== false, parts = null, partsTotal = null, partCheck = null }) {
+    job.plan = { outputSchema, finalize, maxAttempts, effort, partsTotal: parts?.total ?? partsTotal, partCheck };
     job.attempt = 1;
     job.provider = "codex";
     this.jobs.set(job.id, job);
@@ -780,11 +804,7 @@ export class CodexSlideServer extends EventEmitter {
     try {
       await this.ensureStarted();
       this.#updateJob(job, { status: "starting", stage: "Codexを起動", detail: "専用のスレッドを準備しています。" });
-      const threadResult = await this.request("thread/start", { cwd: this.workspaceDir });
-      const threadId = threadResult?.thread?.id;
-      if (!threadId) throw new Error("Codex did not return a thread id");
-      job.threadId = threadId;
-      this.threadJobs.set(threadId, job.id);
+      await this.#newThread(job);
       await this.#startTurn(job, job.initialPrompt);
     } catch (error) {
       await this.#fallBack(job, error instanceof Error ? error.message : String(error));
@@ -872,20 +892,51 @@ export class CodexSlideServer extends EventEmitter {
     });
   }
 
+  /** A new thread for the job; events from the one it had are no longer the job's. */
+  async #newThread(job) {
+    const threadResult = await this.request("thread/start", { cwd: this.workspaceDir });
+    const threadId = threadResult?.thread?.id;
+    if (!threadId) throw new Error("Codex did not return a thread id");
+    if (job.threadId) this.threadJobs.delete(job.threadId);
+    job.threadId = threadId;
+    job.formatSent = false;
+    this.threadJobs.set(threadId, job.id);
+  }
+
+  /** Stop the job's turn and leave its thread (Codex would send the same request again and again). */
+  #abandonTurn(job) {
+    clearTimeout(job.errorTimer);
+    if (job.threadId) {
+      this.threadJobs.delete(job.threadId);
+      if (job.turnId) this.request("turn/interrupt", { threadId: job.threadId, turnId: job.turnId }).catch(() => {});
+    }
+  }
+
+  /** Ask again in a new thread after an answer was cut off. */
+  #retryFresh(job, prompt) {
+    this.#newThread(job)
+      .then(() => this.#startTurn(job, prompt))
+      .catch((retryError) => this.#fallBack(job, retryError instanceof Error ? retryError.message : String(retryError)).catch((error) => this.failJob(job.id, error)));
+  }
+
   async #startTurn(job, text) {
     job.messageParts = new Map();
     job.finalText = null;
     job.lastPrompt = text;
     job.turnError = null;
+    // Without the output format, the shape it asks for goes with the first request of the thread.
+    const withFormat = job.noSchema && job.plan.outputSchema && !job.formatSent;
+    if (withFormat) job.formatSent = true;
+    const input = withFormat ? `${text}\n${formatLines(job.plan.outputSchema)}` : job.noSchema ? `${text}\n（回答は最初に示した形式の JSON だけ）` : text;
     const turnResult = await this.request("turn/start", {
       threadId: job.threadId,
-      input: [{ type: "text", text }, ...(job.kind === "image" && job.referencePath ? [{ type: "localImage", path: job.referencePath }] : [])],
+      input: [{ type: "text", text: input }, ...(job.kind === "image" && job.referencePath ? [{ type: "localImage", path: job.referencePath }] : [])],
       cwd: this.workspaceDir,
       approvalPolicy: "never",
       sandboxPolicy: { type: "workspaceWrite", writableRoots: [this.workspaceDir], networkAccess: false },
       effort: job.plan.effort,
       summary: "concise",
-      ...(job.plan.outputSchema ? { outputSchema: job.plan.outputSchema } : {}),
+      ...(job.plan.outputSchema && !job.noSchema ? { outputSchema: job.plan.outputSchema } : {}),
     });
     job.turnId = turnResult?.turn?.id ?? null;
     const first = { image: ["画像を生成中", "指定された絵柄で新しい画像を描いています。"], chat: ["考えています", "依頼を読んで、資料の該当箇所を確認しています。"], variants: ["別案を考えています", "見せ方の違う案を組み立てています。"], outline: ["骨子を考えています", "話の流れと各スライドの役割を決めています。"], notes: ["原稿を書いています", "スライドごとの話す内容を組み立てています。"], translate: ["翻訳しています", "スライドの文字を訳しています。"], synonyms: ["類義語を探しています", "言い換えられる語を挙げています。"] }[job.kind] ?? ["構成を生成", "Codexが流れとレイアウトを設計しています。"];
@@ -992,9 +1043,16 @@ export class CodexSlideServer extends EventEmitter {
         break;
       }
       case "error":
+        console.warn(`[codex] job ${job.id} (${job.kind ?? "deck"}) error${params.willRetry ? " (Codex retries)" : ""}: ${params.error?.message ?? ""} ${JSON.stringify(params.error?.codexErrorInfo ?? "")}`.slice(0, 600));
+        if (params.willRetry && tooLong(params.error) && job.plan.outputSchema) {
+          // Cut off at the output limit: Codex would send the same request again, which is cut off the same way.
+          this.#abandonTurn(job);
+          this.#failTurn(job, params.error);
+          break;
+        }
         if (params.willRetry) {
           // Codex retries this itself (a dropped stream, a brief overload): keep waiting for the turn.
-          this.#updateJob(job, { detail: "通信が不安定なため、Codexが再試行しています…" });
+          this.#updateJob(job, { detail: TRANSIENT_ERRORS.has(errorKind(params.error)) ? "Codexの応答が途切れたため、Codexがもう一度送っています…" : "Codexがもう一度試しています…" });
           break;
         }
         // The turn ends right after with status "failed"; #completeTurn decides whether to try again.
@@ -1016,17 +1074,30 @@ export class CodexSlideServer extends EventEmitter {
   /** A turn that failed: once per job, a transient failure (overload, dropped stream) is simply asked again. */
   #failTurn(job, error, status = "failed") {
     clearTimeout(job.errorTimer);
-    // The deck did not fit in one answer: write it a few slides at a time (fewer still if a part did not fit).
-    if (job.kind === "deck" && tooLong(error) && job.plan.partsTotal > 2 && (!job.parts || job.parts.size > 2) && !job.splitTried?.[job.parts?.size ?? 0]) {
-      job.splitTried = { ...(job.splitTried || {}), [job.parts?.size ?? 0]: true };
-      if (job.parts) job.parts.size = 2;
-      else job.parts = { total: job.plan.partsTotal, size: Math.min(4, Math.ceil(job.plan.partsTotal / 2)), done: [], meta: null, retries: 0 };
-      const prompt = job.parts.done.length ? partPrompt(job, { note: "前の回答は長すぎて途中で切れました。" }) : partPrompt(job, { first: true });
-      this.#updateJob(job, { stage: "分けて作成中", detail: `1回の回答に入りきらなかったため、${job.parts.size}枚ずつに分けて書いています。` });
-      this.#startTurn(job, prompt).catch((retryError) => this.failJob(job.id, retryError));
-      return;
+    if (tooLong(error) && job.provider !== "local") {
+      this.#abandonTurn(job);
+      // Less thinking leaves more of the output limit for the answer.
+      job.plan.effort = "low";
+      // First the same request without the strict output format (a long format can make the answer run on),
+      // in a new thread: the format is written out in the request instead and the answer checked here.
+      if (job.plan.outputSchema && !job.noSchema) {
+        job.noSchema = true;
+        this.#updateJob(job, { stage: "書き直し中", detail: "回答が途中で切れたため、書き方を変えてやり直しています。" });
+        this.#retryFresh(job, job.parts ? partPrompt(job, { first: true }) : job.initialPrompt);
+        return;
+      }
+      // The deck did not fit in one answer: write it a few slides at a time (fewer still if a part did not fit).
+      if (job.kind === "deck" && job.plan.partsTotal > 2 && (!job.parts || job.parts.size > 2) && !job.splitTried?.[job.parts?.size ?? 0]) {
+        job.splitTried = { ...(job.splitTried || {}), [job.parts?.size ?? 0]: true };
+        if (job.parts) job.parts.size = 2;
+        else job.parts = { total: job.plan.partsTotal, size: Math.min(4, Math.ceil(job.plan.partsTotal / 2)), done: [], meta: null, retries: 0 };
+        this.#updateJob(job, { stage: "分けて作成中", detail: `1回の回答に入りきらなかったため、${job.parts.size}枚ずつに分けて書いています。` });
+        this.#retryFresh(job, partPrompt(job, { first: true, note: job.parts.done.length ? "（前の回答は長すぎて途中で切れました。）" : "" }));
+        return;
+      }
     }
-    if (TRANSIENT_ERRORS.has(errorKind(error)) && !job.transientRetried && job.lastPrompt) {
+    // (Not an answer that was cut off: that is the same however often it is sent.)
+    if (TRANSIENT_ERRORS.has(errorKind(error)) && !tooLong(error) && !job.transientRetried && job.lastPrompt) {
       job.transientRetried = true;
       this.#updateJob(job, { stage: "再試行中", detail: "Codex側が混み合っているため、もう一度依頼しています。" });
       this.#startTurn(job, job.lastPrompt).catch((retryError) => this.failJob(job.id, retryError));
@@ -1083,6 +1154,13 @@ export class CodexSlideServer extends EventEmitter {
       let slides = Array.isArray(part?.slideData) ? part.slideData : [];
       // The whole deck (or more than asked): keep the slides of this part.
       if (slides.length > to - from + 1) slides = slides.length >= to ? slides.slice(from - 1, to) : slides.slice(0, to - from + 1);
+      // Each part is checked as it comes (a repair of the joined deck would ask for all of it again).
+      const problem = slides.length && job.plan.partCheck ? job.plan.partCheck(slides, { from, to, total: job.parts.total }) : "";
+      if (problem && job.parts.retries < 2) {
+        job.parts.retries += 1;
+        await next(partPrompt(job, { note: `前の回答の${from}〜${to}枚目に問題がありました：${problem}\n直して、同じ範囲をもう一度返してください。` }));
+        return;
+      }
       if (!slides.length) {
         if (job.parts.retries < 2) {
           job.parts.retries += 1;
@@ -1094,6 +1172,7 @@ export class CodexSlideServer extends EventEmitter {
       }
       job.parts.meta ??= part;
       job.parts.done.push(...slides);
+      job.parts.retries = 0;
       if (job.parts.done.length < job.parts.total) {
         this.#updateJob(job, { stage: "構成を書き出し中", detail: `全${job.parts.total}枚のうち${job.parts.done.length}枚を書き上げました。`, partial: [...job.parts.done] });
         await next(partPrompt(job));
@@ -1184,6 +1263,7 @@ export class CodexSlideServer extends EventEmitter {
 
   #updateJob(job, patch) {
     Object.assign(job, patch, { updatedAt: new Date().toISOString() });
+    if (patch.status === "failed") console.warn(`[job] ${job.id} (${job.kind ?? "deck"}, ${job.provider ?? "codex"}) failed: ${String(job.error ?? job.detail ?? "").slice(0, 400)}`);
     this.emit("job", this.#publicJob(job));
     if (["completed", "failed"].includes(job.status) && !job.cleanupTimer) {
       if (job.referencePath) { try { unlinkSync(job.referencePath); } catch { /* already removed */ } job.referencePath = null; }
