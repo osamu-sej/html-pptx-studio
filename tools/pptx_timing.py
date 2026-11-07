@@ -652,7 +652,8 @@ class Timing:
         # slide already starts it with a trigger of its own.
         for m in media:
             target = self.targets.get(m["id"])
-            if not target or m["id"] in triggers:
+            # A filmed HTML effect plays on its own moment only (a click on it does nothing).
+            if not target or m["id"] in triggers or m.get("clip"):
                 continue
             spid = target.spids[0]
             toggle = self.wrap(MEDIA_IDS["pause"], 0, "mediacall", [b.cmd(sp_tgt(spid), "togglePause")], "clickEffect", delay=0, grp=None)

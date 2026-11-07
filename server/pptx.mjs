@@ -2,9 +2,11 @@
 // editor/pptx-collect.mjs) and read back as PowerPoint-shaped objects; what PowerPoint has no part for is photographed
 // (an icon, an equation, ink, a camera, a 3D model, a Lottie animation, the theme's background art, a page that cannot
 // be taken apart), and tools/pptx_export.py writes the .pptx. One browser serves every export, one export at a time.
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { createRequire } from "node:module";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { pythonBinary } from "./extract.mjs";
@@ -58,6 +60,64 @@ function serially(task) {
 
 const dataUrl = (buffer) => `data:image/png;base64,${buffer.toString("base64")}`;
 
+// ---------------------------------------------------------------- what only HTML can draw, as video
+
+const FPS = 30;
+// A deck's worth of filming at most (each clip is a few dozen pictures).
+const MAX_CLIPS = 80;
+const MAX_CLIP_MS = 20_000;
+
+let ffmpegChecked = null;
+/** ffmpeg with an H.264 encoder (PowerPoint plays H.264 MP4 everywhere), or null. */
+export function ffmpegBinary() {
+  if (ffmpegChecked !== null) return ffmpegChecked || null;
+  const bin = process.env.FFMPEG_PATH || "ffmpeg";
+  const probe = spawnSync(bin, ["-hide_banner", "-encoders"], { encoding: "utf8" });
+  ffmpegChecked = probe.status === 0 && /libx264/.test(probe.stdout) ? bin : false;
+  return ffmpegChecked || null;
+}
+
+/** Pictures (PNG buffers, one per frame at FPS) as an H.264 MP4 that PowerPoint plays. */
+async function encodeMp4(frames) {
+  const bin = ffmpegBinary();
+  const dir = await mkdtemp(join(tmpdir(), "hpptx-clip-"));
+  try {
+    for (const [i, frame] of frames.entries()) await writeFile(join(dir, `f${String(i).padStart(5, "0")}.png`), frame);
+    const out = join(dir, "clip.mp4");
+    await new Promise((resolve, reject) => {
+      const child = spawn(bin, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(FPS), "-i", join(dir, "f%05d.png"),
+        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+        "-movflags", "+faststart", "-an", out], { stdio: ["ignore", "ignore", "pipe"] });
+      let err = "";
+      child.stderr.on("data", (chunk) => { err += String(chunk); });
+      child.once("error", reject);
+      child.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `ffmpeg ${code}`))));
+    });
+    return await readFile(out);
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
+  }
+}
+
+/**
+ * Film one HTML-only effect of slide `i` (pptx-collect's mountClip / seekClip): its region, frame by frame, as an MP4.
+ * Returns { src, poster, box, dur, lasting, loop } for the entry, or null.
+ */
+async function recordClip(page, i, id, background) {
+  const info = await page.evaluate(([index, entryId, bg]) => window.__pptx.mountClip(index, entryId, bg), [i, id, background]);
+  if (!info || !(info.box.w > 0 && info.box.h > 0)) return null;
+  const dur = Math.min(info.dur, MAX_CLIP_MS);
+  const count = Math.max(2, Math.ceil((dur / 1000) * FPS) + 1);
+  const clip = { x: info.box.x, y: info.box.y, width: info.box.w, height: info.box.h };
+  const frames = [];
+  for (let k = 0; k < count; k += 1) {
+    await page.evaluate((t) => window.__pptx.seekClip(t), Math.min(dur, (k * 1000) / FPS));
+    frames.push(await page.screenshot({ type: "png", clip, scale: "css" }));
+  }
+  const mp4 = await encodeMp4(frames);
+  return { src: `data:video/mp4;base64,${mp4.toString("base64")}`, poster: dataUrl(frames[0]), box: info.box, dur, lasting: info.lasting, loop: info.loop };
+}
+
 /**
  * The PowerPoint model of a deck: { title, theme, slides: [{ objects, background, notes, hidden, transition, … }] }.
  * `base` is this server's own address (the headless browser loads the export page from it).
@@ -74,6 +134,7 @@ export async function collectModel(deck, { base, timeoutMs = 240_000 }) {
     await page.waitForFunction(() => window.__pptxReady === true, null, { timeout: 30_000 });
     const info = await page.evaluate((d) => window.__pptx.load(d), deck);
     const slides = [];
+    let filmed = 0;
     for (let i = 0; i < info.slides; i += 1) {
       if (Date.now() - started > timeoutMs) throw new Error("書き出しに時間がかかりすぎました。スライドを分けて試してください。");
       const s = await page.evaluate((index) => window.__pptx.slide(index), i);
@@ -97,6 +158,16 @@ export async function collectModel(deck, { base, timeoutMs = 240_000 }) {
         if (o.kind === "video" || o.kind === "audio") { o.poster = png; continue; }
         s.objects[k] = { id: o.id, kind: "picture", from: o.kind, name: o.name, alt: o.alt, x: clip.x, y: clip.y, w: clip.width, h: clip.height, src: png };
       }
+      // What only HTML draws: each effect filmed on its own, for PowerPoint to play at the same moment.
+      if (s.clips?.length && ffmpegBinary()) {
+        for (const id of s.clips) {
+          if (filmed >= MAX_CLIPS || Date.now() - started > timeoutMs) break;
+          const entry = s.timeline.find((e) => e.id === id);
+          const got = entry ? await recordClip(page, i, id, s.background).catch((error) => { errors.push(`clip: ${error.message}`); return null; }) : null;
+          if (got) { entry.clip = got; filmed += 1; }
+        }
+      }
+      delete s.clips;
       slides.push(s);
     }
     // The sounds the slides play (画面切り替えのサウンド, an effect's サウンド), made once for the whole deck.

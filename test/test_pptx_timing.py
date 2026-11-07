@@ -286,3 +286,72 @@ class Groups(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class FilmedEffects(unittest.TestCase):
+    """What only HTML draws comes as the browser's film (entry["clip"]): a video under its part, shown and played at the
+    effect's moment, the part (still editable) coming back at its end; importing the file gives the effect back."""
+
+    @classmethod
+    def setUpClass(cls):
+        from PIL import Image
+        out = io.BytesIO()
+        Image.new("RGB", (40, 20), (255, 255, 255)).save(out, "PNG")
+        poster = "data:image/png;base64," + base64.b64encode(out.getvalue()).decode()
+        film = lambda box, dur, **more: {"src": "data:video/mp4;base64," + base64.b64encode(b"\0\0\0\x18ftypmp42" + b"\0" * 64).decode(),  # noqa: E731
+                                         "poster": poster, "box": box, "dur": dur, "lasting": False, "loop": False, **more}
+        objects = [shape("under", x=80, y=80, w=900, h=500), {"id": "tw", "kind": "text", "x": 100, "y": 100, "w": 800, "h": 120, "text": "<p>タイプライター</p>", "fs": 48},
+                   shape("over", x=600, y=150, w=200, h=200), shape("mk", x=100, y=600, w=800, h=150)]
+        timeline = [
+            {"id": "a1", "el": "tw", "cls": "in", "fx": "typewriter", "start": "click", "dur": 1600, "delay": 0, "clip": film({"x": 88, "y": 88, "w": 824, "h": 144}, 1600)},
+            {"id": "a2", "el": "tw", "cls": "em", "fx": "shine", "start": "after", "dur": 1000, "delay": 300, "clip": film({"x": 88, "y": 88, "w": 824, "h": 144}, 1000)},
+            {"id": "a3", "el": "mk", "cls": "em", "fx": "marker", "start": "click", "dur": 800, "delay": 0, "clip": film({"x": 88, "y": 588, "w": 824, "h": 174}, 800, lasting=True)},
+            {"id": "a4", "el": "tw", "cls": "out", "fx": "fade", "start": "click", "dur": 500, "delay": 0},
+        ]
+        cls.model = {"theme": {}, "slides": [{"objects": objects, "timeline": timeline}]}
+        cls.data, cls.stats = write_pptx(cls.model)
+        (cls.name, cls.root, cls.raw), = slides_of(cls.data)
+        cls.back = read_pptx_exact(cls.data)["slideData"][0]
+
+    def test_valid_and_counted(self):
+        self.assertTrue(SCHEMA.validate(self.root), [e.message for e in list(SCHEMA.error_log)[:3]])
+        self.assertEqual(self.stats["clips"], 3)
+        self.assertEqual(self.stats.get("approximated", 0), 0)
+
+    def test_each_video_lies_under_its_part_and_keeps_the_effect(self):
+        tree = self.raw.find(f"{P}cSld/{P}spTree")
+        names = [el.find(".//" + P + "cNvPr").get("name") for el in tree if el.find(".//" + P + "cNvPr") is not None]
+        videos = [el for el in tree if el.find(f"{P}nvPicPr/{P}nvPr/{{http://schemas.openxmlformats.org/drawingml/2006/main}}videoFile") is not None]
+        self.assertEqual(len(videos), 3)
+        order = [el.find(".//" + P + "cNvPr").get("id") for el in tree if el.find(".//" + P + "cNvPr") is not None]
+        tw = next(el for el in tree if el.find(f".//{P}txBody") is not None and "タイプライター" in "".join(el.itertext()))
+        tw_at = list(tree).index(tw)
+        # Both films of the typewriter's part lie right under it, the shape drawn over it stays over the films.
+        self.assertTrue(all(list(tree).index(v) < tw_at for v in videos[:2]), (names, order))
+        for v in videos:
+            self.assertIsNotNone(v.find(f"{P}nvPicPr/{P}nvPr/{P}custDataLst/{P}tags"))
+        with zipfile.ZipFile(io.BytesIO(self.data)) as z:
+            tags = [n for n in z.namelist() if n.startswith("ppt/tags/")]
+            self.assertEqual(len(tags), 3)
+            self.assertIn("HPPTX_CLIP", z.read(tags[0]).decode())
+
+    def test_the_films_show_and_play_at_the_effects_moment(self):
+        vids = {el.find(f"{P}nvPicPr/{P}cNvPr").get("id") for el in self.raw.iter(f"{P}pic") if el.find(f"{P}nvPicPr/{P}nvPr/{{http://schemas.openxmlformats.org/drawingml/2006/main}}videoFile") is not None}
+        effects = [(c.get("presetClass"), c.get("presetID"), c.get("nodeType"), next(c.iter(f"{P}spTgt")).get("spid"), c.find(f"{P}stCondLst/{P}cond").get("delay"))
+                   for c in self.raw.iter(f"{P}cTn") if c.get("presetClass")]
+        first = [e for e in effects if e[3] in vids][:2]
+        # A film's first effect is its entrance (PowerPoint keeps it hidden until then), and it plays with it.
+        self.assertEqual([(e[0], e[2]) for e in first], [("entr", "clickEffect"), ("mediacall", "withEffect")])
+        # The typewriter's part comes in (appear) as its film ends, and the film goes.
+        self.assertIn(("entr", "1", "withEffect", "1600"), [(e[0], e[1], e[2], e[4]) for e in effects if e[3] not in vids])
+        # A click on a film does nothing (no interactive sequence of its own).
+        self.assertFalse(any(c.get("nodeType") == "interactiveSeq" for c in self.raw.iter(f"{P}cTn")))
+
+    def test_importing_gives_the_effects_back(self):
+        kinds = [o["kind"] for o in self.back["elements"]]
+        self.assertNotIn("video", kinds)
+        got = [(e["cls"], e["fx"], e["start"], e.get("delay", 0)) for e in self.back["timeline"]]
+        self.assertEqual(got, [("in", "typewriter", "click", 0), ("em", "shine", "after", 300), ("em", "marker", "click", 0), ("out", "fade", "click", 0)])
+        els = {e["fx"]: e["el"] for e in self.back["timeline"]}
+        self.assertEqual(els["typewriter"], els["shine"])
+        self.assertEqual(els["typewriter"], els["fade"])

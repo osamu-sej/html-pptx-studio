@@ -18,6 +18,7 @@ from __future__ import annotations
 import base64
 import colorsys
 import io
+import json
 import math
 import posixpath
 import re
@@ -385,6 +386,8 @@ class SlideReader:
             self.clr_map = dict(override.attrib)
         self.objects: list[dict[str, Any]] = []
         self.by_spid: dict[str, str] = {}
+        # Videos the studio's PowerPoint export filmed for an HTML-only effect (their tag HPPTX_CLIP), by shape id.
+        self.clips: dict[str, dict[str, Any]] = {}
         self.actions: dict[str, dict[str, str]] = {}
         self.over_actions: dict[str, dict[str, str]] = {}
         self.used: set[str] = set()
@@ -1250,6 +1253,13 @@ class SlideReader:
         kind = None
         if nvpr is not None:
             kind = "video" if nvpr.find(A + "videoFile") is not None else "audio" if nvpr.find(A + "audioFile") is not None else None
+        if kind == "video" and spid and not self.importing_decoration:
+            clip = clip_tag(nvpr, part or self.slide.part)
+            if clip is not None:
+                # Not a video of its own: the effect comes back on its part (restore_clips).
+                self.clips[spid] = clip
+                self.by_spid[spid] = f"__clip:{spid}"
+                return
         if kind:
             media = self.media(el, nvpr, kind, b, spid, part, nv)
             if media:
@@ -1809,7 +1819,7 @@ class SlideReader:
                 o["fullscreen"] = True
         if self.objects:
             slide["elements"] = self.objects
-        timeline = timeline_of(self.slide._element, self.by_spid, self.deck)
+        timeline = restore_clips(timeline_of(self.slide._element, self.by_spid, self.deck), self.clips, self.by_spid, self.objects)
         if timeline:
             slide["timeline"] = timeline
             self.deck.stats["animations"] += len(timeline)
@@ -2291,6 +2301,62 @@ def timeline_of(slide_el, by_spid, deck: Deck) -> list[dict[str, Any]]:
     if len(out) > 5000:
         raise ValueError("アニメーションが5000件を超えています。")
     return out
+
+
+def clip_tag(nvpr, part) -> dict[str, Any] | None:
+    """The studio's HPPTX_CLIP tag on a video (p:custDataLst → a tags part), parsed, or None."""
+    for tags in nvpr.iter(P + "tags"):
+        rid = tags.get(R + "id")
+        try:
+            blob = part.related_part(rid).blob
+            root = etree.fromstring(blob)
+        except Exception:  # noqa: BLE001  (a tag that cannot be read is not the studio's)
+            continue
+        for tag in root.iter(P + "tag"):
+            if (tag.get("name") or "").upper() == "HPPTX_CLIP":
+                try:
+                    data = json.loads(tag.get("val") or "")
+                except ValueError:
+                    return None
+                return data if isinstance(data, dict) and isinstance(data.get("entry"), dict) else None
+    return None
+
+
+def restore_clips(timeline: list[dict[str, Any]], clips: dict[str, dict[str, Any]], by_spid: dict[str, str],
+                  objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+    """
+    An HTML-only effect the studio exported as a filmed video comes back as the studio's own effect on its part, where
+    the video started playing; the video's own steps and the steps that hid and showed the part around it go.
+    """
+    if not clips:
+        return timeline
+    groups = {o["id"]: o.get("group") for o in objects}
+    out = list(timeline)
+    for spid, data in clips.items():
+        key = f"__clip:{spid}"
+        original = dict(data["entry"])
+        targets = [by_spid.get(str(t)) for t in data.get("target") or []]
+        targets = [t for t in targets if t and not t.startswith("__clip:")]
+        if not targets:
+            out = [e for e in out if e.get("el") != key]
+            continue
+        el = targets[0]
+        if str(original.get("el") or "").startswith("grp:") and groups.get(el):
+            el = f"grp:{groups[el]}"
+        play = next((i for i, e in enumerate(out) if e.get("el") == key and e.get("cls") == "media"), None)
+        restored = {**original, "el": el}
+        restored.pop("trigger", None)
+        if play is not None and out[play].get("trigger"):
+            restored["trigger"] = out[play]["trigger"]
+        # The steps around the video on the part: one per helper (an appear at the same moment).
+        for helper in data.get("helpers") or []:
+            at = next((i for i, e in enumerate(out) if e.get("el") == el and e.get("fx") == "appear" and e.get("cls") == helper.get("cls")
+                       and e.get("start") == "with" and int(e.get("delay") or 0) == int(helper.get("delay") or 0)), None)
+            if at is not None:
+                out[at] = {"__drop": True}
+        first = next((i for i, e in enumerate(out) if e.get("el") == key), None)
+        out = [restored if i == first else e for i, e in enumerate(out) if i == first or e.get("el") != key]
+    return [e for e in out if not e.get("__drop")]
 
 
 def media_settings(slide_el) -> dict[str, dict[str, Any]]:
