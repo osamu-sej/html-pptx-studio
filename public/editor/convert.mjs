@@ -387,9 +387,9 @@ export function createConverter(app) {
       materializePseudos(el);
       const reader = createReader(el, { slide, deck, opts, chrome });
       const atoms = reader.read();
-      const { objects, groups, fields } = finish(atoms, slide, deck, index);
+      const { objects, groups, fields, counts } = finish(atoms, slide, deck, index);
       const timeline = buildTimeline({ build, entrance, groups, fields, timeline: slide.timeline });
-      return { objects, timeline, slide: convertedSlide(slide, objects, timeline) };
+      return { objects, timeline, fields, counts, slide: convertedSlide(slide, objects, timeline) };
     } finally {
       host.remove();
     }
@@ -499,7 +499,7 @@ export function createConverter(app) {
         if (o.kind === "text") { if (o.valign === "top") o.h = r2(y2 - y1); }
         else Object.assign(o, { x: r2(x1), y: r2(y1), w: r2(x2 - x1), h: r2(y2 - y1) });
       }
-      atoms.push({ o, g: ctx.g, item: ctx.item, field: ctx.field, pair });
+      atoms.push({ o, g: ctx.g, item: ctx.item, field: ctx.field, count: Boolean(ctx.count), pair });
     };
     const ctxFor = (el, ctx) => {
       const next = { ...ctx };
@@ -507,6 +507,8 @@ export function createConverter(app) {
       if (next.item == null && el.dataset?.item) next.item = el.dataset.item;
       // The title and the key message (read with the chrome): an animation on "@title" follows them.
       if (next.field == null && (el.dataset?.field === "title" || el.dataset?.field === "takeaway")) next.field = `@${el.dataset.field}`;
+      // A figure the show counts up as it appears (data-count).
+      if (!next.count && el.dataset?.count) next.count = true;
       return next;
     };
     const opacityOf = (a) => (a < 0.98 ? { opacity: r2(Math.max(0.05, a)) } : {});
@@ -1248,6 +1250,7 @@ export function createConverter(app) {
     const seed = Math.random().toString(36).slice(2, 6);
     const byItem = new Map();
     const byField = new Map();
+    const counts = [];
     for (const atom of atoms) {
       const o = E.normalizeObject(atom.o);
       if (!o) continue;
@@ -1257,6 +1260,7 @@ export function createConverter(app) {
       objects.push(o);
       if (atom.item && targets.has(atom.item) && o.kind !== "line") { if (!byItem.has(atom.item)) byItem.set(atom.item, []); byItem.get(atom.item).push(o); }
       if (atom.field) { if (!byField.has(atom.field)) byField.set(atom.field, []); byField.get(atom.field).push(o); }
+      if (atom.count && (o.kind === "text" || o.kind === "shape") && o.text) counts.push(o.id);
       if (atom.g != null) { if (!byG.has(atom.g)) byG.set(atom.g, []); byG.get(atom.g).push(o); }
       else if (atom.pair) { if (!pairs.has(atom.pair)) pairs.set(atom.pair, []); pairs.get(atom.pair).push(o); }
       if (objects.length >= 300) break;
@@ -1281,7 +1285,7 @@ export function createConverter(app) {
       for (const o of list) if (!o.group) o.group = id;
       fields[field] = list.every((o) => o.group === id) ? `grp:${id}` : list[0].id;
     }
-    return { objects, groups, fields };
+    return { objects, groups, fields, counts };
   }
 
   return { convert, refusal, chromeObjects };

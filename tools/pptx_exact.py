@@ -388,6 +388,7 @@ class SlideReader:
         self.by_spid: dict[str, str] = {}
         # Videos the studio's PowerPoint export filmed for an HTML-only effect (their tag HPPTX_CLIP), by shape id.
         self.clips: dict[str, dict[str, Any]] = {}
+        self.backdrop: str | None = None
         self.actions: dict[str, dict[str, str]] = {}
         self.over_actions: dict[str, dict[str, str]] = {}
         self.used: set[str] = set()
@@ -1254,6 +1255,13 @@ class SlideReader:
         if nvpr is not None:
             kind = "video" if nvpr.find(A + "videoFile") is not None else "audio" if nvpr.find(A + "audioFile") is not None else None
         if kind == "video" and spid and not self.importing_decoration:
+            loop = clip_tag(nvpr, part or self.slide.part, "HPPTX_BACKDROP")
+            if loop is not None:
+                # The studio's moving backdrop, filmed: the slide gets its 背景の動き back.
+                if loop.get("kind"):
+                    self.backdrop = str(loop["kind"])[:24]
+                self.by_spid[spid] = f"__clip:{spid}"
+                return
             clip = clip_tag(nvpr, part or self.slide.part)
             if clip is not None:
                 # Not a video of its own: the effect comes back on its part (restore_clips).
@@ -1819,6 +1827,8 @@ class SlideReader:
                 o["fullscreen"] = True
         if self.objects:
             slide["elements"] = self.objects
+        if self.backdrop:
+            slide["backdrop"] = self.backdrop
         timeline = restore_clips(timeline_of(self.slide._element, self.by_spid, self.deck), self.clips, self.by_spid, self.objects)
         if timeline:
             slide["timeline"] = timeline
@@ -2303,8 +2313,8 @@ def timeline_of(slide_el, by_spid, deck: Deck) -> list[dict[str, Any]]:
     return out
 
 
-def clip_tag(nvpr, part) -> dict[str, Any] | None:
-    """The studio's HPPTX_CLIP tag on a video (p:custDataLst → a tags part), parsed, or None."""
+def clip_tag(nvpr, part, name: str = "HPPTX_CLIP") -> dict[str, Any] | None:
+    """The studio's tag `name` on a video (p:custDataLst → a tags part), parsed, or None."""
     for tags in nvpr.iter(P + "tags"):
         rid = tags.get(R + "id")
         try:
@@ -2313,12 +2323,14 @@ def clip_tag(nvpr, part) -> dict[str, Any] | None:
         except Exception:  # noqa: BLE001  (a tag that cannot be read is not the studio's)
             continue
         for tag in root.iter(P + "tag"):
-            if (tag.get("name") or "").upper() == "HPPTX_CLIP":
+            if (tag.get("name") or "").upper() == name:
                 try:
                     data = json.loads(tag.get("val") or "")
                 except ValueError:
                     return None
-                return data if isinstance(data, dict) and isinstance(data.get("entry"), dict) else None
+                if not isinstance(data, dict):
+                    return None
+                return data if name != "HPPTX_CLIP" or isinstance(data.get("entry"), dict) else None
     return None
 
 
@@ -2329,7 +2341,8 @@ def restore_clips(timeline: list[dict[str, Any]], clips: dict[str, dict[str, Any
     the video started playing; the video's own steps and the steps that hid and showed the part around it go.
     """
     if not clips:
-        return timeline
+        # A filmed backdrop's own steps (its video is not imported) go too.
+        return [e for e in timeline if not str(e.get("el") or "").startswith("__clip:")]
     groups = {o["id"]: o.get("group") for o in objects}
     out = list(timeline)
     for spid, data in clips.items():
@@ -2356,7 +2369,7 @@ def restore_clips(timeline: list[dict[str, Any]], clips: dict[str, dict[str, Any
                 out[at] = {"__drop": True}
         first = next((i for i, e in enumerate(out) if e.get("el") == key), None)
         out = [restored if i == first else e for i, e in enumerate(out) if i == first or e.get("el") != key]
-    return [e for e in out if not e.get("__drop")]
+    return [e for e in out if not e.get("__drop") and not str(e.get("el") or "").startswith("__clip:")]
 
 
 def media_settings(slide_el) -> dict[str, dict[str, Any]]:

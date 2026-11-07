@@ -1153,9 +1153,32 @@ class Writer:
             self.stats["clips"] = self.stats.get("clips", 0) + 1
         return out, media
 
+    def backdrop_video(self, slide, s: dict[str, Any], objects: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """背景の動き (the browser's seamless loop of it): a video behind everything, playing as the slide arrives."""
+        v = s.get("backdropVideo") or {}
+        got = data_url(v.get("src") or "")
+        if not got:
+            return []
+        poster = data_url(v.get("poster") or "")
+        mov = slide.shapes.add_movie(io.BytesIO(got[0]), Emu(0), Emu(0), Emu(SLIDE_W * EMU_PX), Emu(SLIDE_H * EMU_PX),
+                                     poster_frame_image=io.BytesIO(poster[0]) if poster else None, mime_type="video/mp4")
+        el = mov._element
+        el.nvPicPr.cNvPr.set("name", "背景の動き")
+        tree = el.getparent()
+        tree.remove(el)
+        # Right after the tree's own properties: under every part.
+        first = next((i for i, kid in enumerate(tree) if kid.tag not in (P + "nvGrpSpPr", P + "grpSpPr")), len(tree))
+        tree.insert(first, el)
+        self.tag(slide, el, "HPPTX_BACKDROP", json.dumps({"kind": v.get("kind")}, ensure_ascii=False))
+        objects.append({"id": "backdrop:video", "kind": "video", "_spid": mov.shape_id, "x": 0, "y": 0, "w": SLIDE_W, "h": SLIDE_H})
+        self.stats["backdrops"] = self.stats.get("backdrops", 0) + 1
+        return [{"id": "backdrop:video", "kind": "video", "muted": True, "loop": True, "autoplay": True, "clip": True}]
+
     def motion(self, slide, s: dict[str, Any], objects: list[dict[str, Any]], groups: dict[str, dict[str, Any]]) -> None:
         objects = list(objects)
+        backdrop_media = self.backdrop_video(slide, s, objects)
         timeline, clip_media = self.clips(slide, s, objects, groups)
+        clip_media = backdrop_media + clip_media
         s = {**s, "timeline": timeline}
         targets: dict[str, timing.Target] = {}
         media = list(clip_media)
@@ -1170,7 +1193,7 @@ class Writer:
                 box = {k: float(o.get(k) or 0) for k in ("x", "y", "w", "h")}
             targets[str(o.get("id"))] = timing.Target([o["_spid"]], box, kind=kind, paras=o.get("_paras"), has_text=bool(o.get("text")),
                                                       media=kind if kind in ("video", "audio") else None, has_bg=bool(o.get("_bg")))
-            if kind in ("video", "audio") and not str(o.get("id")).startswith("clip:"):
+            if kind in ("video", "audio") and not str(o.get("id")).startswith(("clip:", "backdrop:")):
                 media.append({"id": str(o.get("id")), **{k: o.get(k) for k in ("kind", "autoplay", "loop", "volume", "muted", "across", "hideIdle", "hideIcon", "fullscreen")}})
         for gid, g in groups.items():
             targets[f"grp:{gid}"] = timing.Target(g["spids"], g["box"], kind="group" if g.get("group") else "split")

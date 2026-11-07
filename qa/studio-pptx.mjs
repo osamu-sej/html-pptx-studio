@@ -132,6 +132,8 @@ await step("the sample deck goes out as an editable PowerPoint (the top bar's Po
   // PowerPoint animates whole shapes only (never a member of a group).
   const inner = got.slides.map((s, i) => [i + 1, s.inner]).filter(([, list]) => list.length);
   assert(!inner.length, `animations on whole shapes: ${JSON.stringify(inner)}`);
+  // What the layout itself moves: the cover's title (its タイトルの動き) is filmed and plays as the slide arrives.
+  assert(got.slides[0].videos >= 1, `the cover's moving title filmed: ${got.slides[0].videos} videos`);
 });
 
 await step("a 白紙 page keeps its own objects (a shape with words, a table) and an icon becomes a picture", async () => {
