@@ -6288,6 +6288,7 @@ async function exportPptx({ checked = false } = {}) {
     try { stats = JSON.parse(response.headers.get("x-export-stats") || "{}"); } catch { /* none */ }
     const notes = [
       stats.animations ? `アニメーション${stats.animations}件は PowerPoint のアニメーションに` : "",
+      stats.clips ? `HTMLならではの動き${stats.clips}件はその部品だけの動画に` : "",
       stats.approximated ? `HTMLならではの動き${stats.approximated}件は近い PowerPoint の動きに` : "",
       stats.rasterized ? `PowerPoint にない部品${stats.rasterized}か所は図に` : "",
     ].filter(Boolean);

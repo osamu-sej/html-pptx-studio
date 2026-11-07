@@ -63,6 +63,7 @@ for s in prs.slides:
     # The slide's animations and transition as PowerPoint reads them, and whether the part is valid (ECMA-376).
     el = etree.fromstring(etree.tostring(s._element))
     effects = [c.get("presetClass") for c in el.iter(f"{P}cTn") if c.get("presetClass")]
+    videos = len(el.findall(f".//{A}videoFile"))
     tops = {c.get("id") for c in el.findall(f"{P}cSld/{P}spTree/*/*/{P}cNvPr")}
     inner = sorted({t.get("spid") for t in el.iter(f"{P}spTgt")} - tops)
     has_tr = el.find(f"{P}transition") is not None or el.find(f"{{{MC}}}AlternateContent") is not None
@@ -74,7 +75,7 @@ for s in prs.slides:
             parent.insert(i + k, kid)
     valid = schema.validate(el)
     out["slides"].append({"shapes": shapes, "notes": s.notes_slide.notes_text_frame.text if s.has_notes_slide else "", "effects": effects,
-                          "transition": has_tr, "valid": valid, "inner": inner, "errors": [e.message[:160] for e in list(schema.error_log)[:2]]})
+                          "transition": has_tr, "valid": valid, "inner": inner, "videos": videos, "errors": [e.message[:160] for e in list(schema.error_log)[:2]]})
 print(json.dumps(out, ensure_ascii=False))`;
   return JSON.parse(execFileSync(python, ["-c", code, file, join(root, "test", "ooxml-xsd", "pml.xsd")]).toString());
 }
@@ -141,7 +142,8 @@ await step("a 白紙 page keeps its own objects (a shape with words, a table) an
       { id: "qs", kind: "shape", shape: "roundRect", x: 200, y: 200, w: 700, h: 300, text: "<p>手で置いた図形</p>", fs: 48 },
       { id: "qt", kind: "table", x: 1000, y: 200, w: 700, h: 300, cols: [0.5, 0.5], rows: [0.5, 0.5], cells: [[{ text: "<p>項目</p>" }, { text: "<p>値</p>" }], [{ text: "<p>A</p>" }, { text: "<p>1</p>" }]] },
       { id: "qi", kind: "icon", icon: "check", x: 200, y: 700, w: 160, h: 160 },
-    ] });
+      { id: "qw", kind: "text", x: 1000, y: 700, w: 700, h: 100, text: "<p>タイプライターで現れる</p>", fs: 48 },
+    ], timeline: [{ id: "qa1", el: "qw", cls: "in", fx: "typewriter", start: "click", dur: 1200 }] });
   });
   await page.evaluate(() => window.__hpptx.deck().slides.length);
   const file = await exportFile("export-blank.pptx", async () => {
@@ -154,6 +156,9 @@ await step("a 白紙 page keeps its own objects (a shape with words, a table) an
   assert(last.some((s) => s.kind === "text" && /手で置いた図形/.test(s.text)), `the shape's words: ${JSON.stringify(last)}`);
   assert(last.some((s) => s.kind === "table"), "the table");
   assert(last.some((s) => s.kind === "picture"), "the icon as a picture");
+  // What only HTML draws (the typewriter) is filmed as a video that plays at its moment; the words stay as text.
+  assert(got.slides.at(-1).videos >= 1, `the typewriter filmed: ${got.slides.at(-1).videos} videos`);
+  assert(last.some((s) => s.kind === "text" && /タイプライターで現れる/.test(s.text)), "the typewriter's words stay as text");
   await shot("after-export");
 });
 

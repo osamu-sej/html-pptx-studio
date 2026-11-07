@@ -26,6 +26,7 @@ from pptx.chart.data import CategoryChartData, XyChartData, BubbleChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
 from pptx.opc.package import Part
+from pptx.opc.packuri import PackURI
 from pptx.util import Emu
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -255,6 +256,7 @@ class Writer:
         self.prs.slide_width, self.prs.slide_height = Emu(SLIDE_W * EMU_PX), Emu(SLIDE_H * EMU_PX)
         self.next_id = 2
         self.sound_parts: dict[str, Any] = {}
+        self.tag_count = 0
         self.stats = {"slides": 0, "objects": 0, "pictures": 0, "tables": 0, "charts": 0, "rasterized": 0}
 
     # ---- theme
@@ -1030,7 +1032,7 @@ class Writer:
             tree.insert(index[0], grp)
             for o in sorted(list_, key=lambda m: list(tree).index(m["_el"])):
                 grp.append(o["_el"])
-            out[gid] = {"spids": [sid], "box": box, "group": True}
+            out[gid] = {"spids": [sid], "box": box, "group": True, "el": grp}
         return out
 
     # ---- animations, transitions, sounds
@@ -1070,9 +1072,93 @@ class Writer:
 
         return rel
 
+    # ---- what only HTML draws, as video
+    def tag(self, slide, el, name: str, value: str) -> None:
+        """A PowerPoint tag on a picture or video (p:custDataLst): kept by PowerPoint as it saves the file."""
+        self.tag_count += 1
+        blob = (f'<?xml version="1.0" encoding="UTF-8" standalone="yes"?>\n<p:tagLst xmlns:p="{NS["p"]}">'
+                f'<p:tag name="{esc(name)}" val="{esc(value)}"/></p:tagLst>').encode("utf-8")
+        part = Part(PackURI(f"/ppt/tags/tag{self.tag_count}.xml"), "application/vnd.openxmlformats-officedocument.presentationml.tags+xml",
+                    self.prs.part.package, blob)
+        rid = slide.part.relate_to(part, RT.TAGS)
+        nvpr = el.find(f"{P}nvPicPr/{P}nvPr")
+        holder = xml(f'<p:custDataLst><p:tags r:id="{rid}"/></p:custDataLst>')
+        ext = nvpr.find(P + "extLst")
+        if ext is not None:
+            ext.addprevious(holder)
+        else:
+            nvpr.append(holder)
+
+    @staticmethod
+    def top_level(el):
+        """The slide-level shape an element belongs to (itself, or the group it lies in)."""
+        while el is not None and el.getparent() is not None and el.getparent().tag != P + "spTree":
+            el = el.getparent()
+        return el
+
+    def clips(self, slide, s: dict[str, Any], objects: list[dict[str, Any]], groups: dict[str, dict[str, Any]]) -> tuple[list, list]:
+        """
+        An HTML-only effect the browser filmed (entry["clip"]): its video lies just under the part it shows, hidden
+        until the effect's moment; then it plays while the part steps aside, and at its end the part (still the
+        editable one) comes back where the video ends. The studio's own effect is kept in the video's tag
+        (HPPTX_CLIP), so importing the file again gives the effect back on the part.
+        Returns the timeline as PowerPoint plays it and the videos to list with the media.
+        """
+        by_id = {str(o.get("id")): o for o in objects}
+        out, media = [], []
+        for e in s.get("timeline") or []:
+            c = e.get("clip")
+            el_key = str(e.get("el") or "")
+            target_el = None
+            if el_key.startswith("grp:") and groups.get(el_key[4:]):
+                g = groups[el_key[4:]]
+                target_el = g.get("el") if g.get("group") else next((o.get("_el") for o in objects if str(o.get("group")) == el_key[4:] and o.get("_el") is not None), None)
+            elif by_id.get(el_key) is not None:
+                target_el = by_id[el_key].get("_el")
+            got = data_url((c or {}).get("src") or "")
+            if not c or target_el is None or not got:
+                out.append({k: v for k, v in e.items() if k != "clip"})
+                continue
+            box = c["box"]
+            poster = data_url(c.get("poster") or "")
+            mov = slide.shapes.add_movie(io.BytesIO(got[0]), Emu(emu(box["x"])), Emu(emu(box["y"])), Emu(max(1, emu(box["w"]))), Emu(max(1, emu(box["h"]))),
+                                         poster_frame_image=io.BytesIO(poster[0]) if poster else None, mime_type="video/mp4")
+            vel = mov._element
+            vid = f"clip:{e.get('id')}"
+            vel.nvPicPr.cNvPr.set("name", f"HTMLの動き {e.get('fx')}")
+            # Under the part it shows (anything above the part stays above the video).
+            vel.getparent().remove(vel)
+            self.top_level(target_el).addprevious(vel)
+            spids = [o["_spid"] for o in objects if o.get("_spid") and (str(o.get("id")) == el_key or (el_key.startswith("grp:") and str(o.get("group")) == el_key[4:]))]
+            cls, d0, total = e.get("cls"), int(e.get("delay") or 0), int(c.get("dur") or e.get("dur") or 500)
+            base = {k: e[k] for k in ("trigger",) if e.get(k)}
+            # The video's first effect is its entrance (PowerPoint keeps it hidden until then), and it plays with it.
+            seq = [{"el": vid, "cls": "in", "fx": "appear", "start": e.get("start") or "click", "delay": d0, "dur": 1, **base},
+                   {"el": vid, "cls": "media", "fx": "play", "start": "with", "delay": d0, "dur": 1, **base}]
+            helpers = []
+            if cls in ("out", "em"):
+                helpers.append({"el": el_key, "cls": "out", "fx": "appear", "start": "with", "delay": d0, "dur": 1, **base})
+            if not c.get("loop"):
+                if cls == "in" or (cls == "em" and not c.get("lasting")):
+                    helpers.append({"el": el_key, "cls": "in", "fx": "appear", "start": "with", "delay": d0 + total, "dur": 1, **base,
+                                    **({"after": e["after"]} if e.get("after") else {})})
+                if not (cls == "em" and c.get("lasting")):
+                    seq.append({"el": vid, "cls": "out", "fx": "appear", "start": "with", "delay": d0 + total, "dur": 1, **base})
+            out.extend(seq[:2] + helpers + seq[2:])
+            original = {k: v for k, v in e.items() if k != "clip"}
+            self.tag(slide, vel, "HPPTX_CLIP", json.dumps({"entry": original, "target": spids, "helpers": [{"cls": h["cls"], "delay": h["delay"]} for h in helpers]},
+                                                          ensure_ascii=False, separators=(",", ":")))
+            objects.append({"id": vid, "kind": "video", "_spid": mov.shape_id, "x": box["x"], "y": box["y"], "w": box["w"], "h": box["h"]})
+            media.append({"id": vid, "kind": "video", "muted": True, "loop": bool(c.get("loop")), "clip": True})
+            self.stats["clips"] = self.stats.get("clips", 0) + 1
+        return out, media
+
     def motion(self, slide, s: dict[str, Any], objects: list[dict[str, Any]], groups: dict[str, dict[str, Any]]) -> None:
+        objects = list(objects)
+        timeline, clip_media = self.clips(slide, s, objects, groups)
+        s = {**s, "timeline": timeline}
         targets: dict[str, timing.Target] = {}
-        media = []
+        media = list(clip_media)
         for o in objects:
             if not o.get("_spid"):
                 continue
@@ -1084,7 +1170,7 @@ class Writer:
                 box = {k: float(o.get(k) or 0) for k in ("x", "y", "w", "h")}
             targets[str(o.get("id"))] = timing.Target([o["_spid"]], box, kind=kind, paras=o.get("_paras"), has_text=bool(o.get("text")),
                                                       media=kind if kind in ("video", "audio") else None, has_bg=bool(o.get("_bg")))
-            if kind in ("video", "audio"):
+            if kind in ("video", "audio") and not str(o.get("id")).startswith("clip:"):
                 media.append({"id": str(o.get("id")), **{k: o.get(k) for k in ("kind", "autoplay", "loop", "volume", "muted", "across", "hideIdle", "hideIcon", "fullscreen")}})
         for gid, g in groups.items():
             targets[f"grp:{gid}"] = timing.Target(g["spids"], g["box"], kind="group" if g.get("group") else "split")

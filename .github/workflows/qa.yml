@@ -51,6 +51,10 @@ jobs:
       # The layout checks measure Japanese text, so the runner needs Japanese fonts (the dev container has IPA Gothic).
       - name: Fonts
         run: sudo apt-get update -qq && sudo apt-get install -y -qq fonts-ipafont fonts-wqy-zenhei
+      # The PowerPoint export films what only HTML draws as H.264 video (server/pptx.mjs).
+      - name: ffmpeg
+        if: matrix.name == 'live'
+        run: sudo apt-get install -y -qq ffmpeg
       # The QA scripts find Playwright through PLAYWRIGHT_MODULE and the browser through CHROME_PATH.
       - name: Playwright and Chromium
         run: |

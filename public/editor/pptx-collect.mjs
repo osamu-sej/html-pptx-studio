@@ -21,6 +21,16 @@ const app = {
 const converter = createConverter(app);
 const stage = document.getElementById("stage");
 
+// The slides' objects and animations, kept for recording their HTML-only effects (by slide index).
+const forClips = new Map();
+let clip = null;
+
+/** An effect only the browser can draw: HTML's own (html: true) or a 3D model's (model: true). */
+function htmlOnly(e) {
+  const def = e.cls === "in" || e.cls === "out" ? E.ANIM_IN?.[e.fx] : e.cls === "em" ? E.ANIM_EM?.[e.fx] : null;
+  return Boolean(def && (def.html || def.model));
+}
+
 // Kinds PowerPoint draws itself; the rest are pictures (taken by the server).
 const NATIVE = new Set(["shape", "text", "image", "line", "table", "chart", "video", "audio"]);
 const clone = (v) => JSON.parse(JSON.stringify(v));
@@ -149,6 +159,10 @@ window.__pptx = {
     const morph = transition === "morph" && previous?.index === index - 1 && E.morphPairs
       ? E.morphPairs(previous.objects, objects).map(([a, b]) => [a.id, b.id]) : [];
     previous = { index, objects: clone(objects) };
+    // What only HTML can draw (a typewriter, a number counting, a shine…): each such effect is recorded as a video
+    // of its part alone (recordClip), played in PowerPoint at the same moment.
+    const clips = timeline.filter((e) => htmlOnly(e)).map((e) => e.id);
+    if (clips.length) forClips.set(index, { objects: clone(objects), timeline: clone(timeline) });
     const rasters = [];
     for (const o of objects) {
       if (!NATIVE.has(o.kind)) rasters.push(o.id);
@@ -160,7 +174,7 @@ window.__pptx = {
     }
     const background = slide.background ? { ...slide.background, ...(slide.background.image ? { image: await dataUrl(slide.background.image) } : {}) } : null;
     return {
-      objects, timeline, background, whole, rasters, morph,
+      objects, timeline, background, whole, rasters, morph, clips,
       notes: slide.notes || "", hidden: Boolean(slide.hidden),
       transition, transitionDir: slide.transitionDir || null, transitionDur: Number(slide.transitionDur) || null,
       transitionSound: slide.transitionSound || null, advance: slide.advance ?? null,
@@ -209,6 +223,69 @@ window.__pptx = {
     const own = [1, 3, 5].map((i) => parseInt(bg1.slice(i, i + 2), 16));
     const otherGround = ground.length === 3 && ground.some((v, i) => Math.abs(v - own[i]) > 2);
     return { art: Boolean(decorArt || layers || otherGround || el.querySelector(".hs-bg")) };
+  },
+
+  /**
+   * One HTML-only effect, ready to be filmed: the slide's ground (`background`, as the server took it), the parts
+   * under the one that moves and the part itself, drawn as the show draws them, with the effect started and paused
+   * at its beginning. Returns { dur, box, lasting, loop } — how long it plays (repeats included) and the region of
+   * the page it moves in (sampled over its length), or null when there is nothing to film.
+   */
+  async mountClip(index, id, background) {
+    const saved = forClips.get(index);
+    const entry = saved?.timeline.find((e) => e.id === id);
+    if (!entry) return null;
+    const members = (o) => (entry.el.startsWith("grp:") ? o.group === entry.el.slice(4) : o.id === entry.el);
+    const last = saved.objects.reduce((at, o, i) => (members(o) ? i : at), -1);
+    if (last < 0) return null;
+    // Only what lies under the part (and the part): what lies above it stays above the video in PowerPoint.
+    const elements = saved.objects.slice(0, last + 1).filter((o, i) => members(o) || i < saved.objects.findIndex(members));
+    const indefinite = entry.repeat === "click" || entry.repeat === "slide";
+    const one = { ...entry, start: "click", delay: 0, trigger: undefined, after: undefined, sound: undefined, ...(indefinite ? { repeat: undefined } : {}) };
+    const slide = { type: "blank", title: "", hideTitle: true, hideMaster: true, elements, timeline: [one], ...(background ? { background } : {}) };
+    stage.replaceChildren();
+    stage.classList.remove("is-clear");
+    const el = E.render(slide, { deck, index, mode: "present", assetBase: "/assets/" });
+    stage.append(el);
+    await document.fonts?.ready;
+    await wait();
+    E.mountModels?.(el);
+    E.repaintCharts?.();
+    E.animStart?.(el, 0);
+    const length = E.animStep?.(el, 1) || Number(entry.dur) || 500;
+    // Every animation the effect started, kept from the start: one that does not hold its end (fill "none") leaves
+    // the page's list once it is seeked past its end, and must still be found when seeking back.
+    const kept = new Set();
+    const anims = () => { for (const a of el.getAnimations ? el.getAnimations({ subtree: true }) : document.getAnimations()) kept.add(a); return [...kept]; };
+    for (const a of anims()) a.pause();
+    const nodes = () => [...el.querySelectorAll(".hs-obj")].filter((n) => elements.some((o) => members(o) && o.id === n.dataset.el));
+    clip = { el, anims, length };
+    // The region it moves in: the part's box at a few moments, a little room around it, inside the slide.
+    let box = null;
+    for (let k = 0; k <= 8; k += 1) {
+      await this.seekClip((length * k) / 8);
+      for (const n of nodes()) {
+        const r = n.getBoundingClientRect();
+        if (!(r.width > 0 && r.height > 0)) continue;
+        box = box ? { x1: Math.min(box.x1, r.left), y1: Math.min(box.y1, r.top), x2: Math.max(box.x2, r.right), y2: Math.max(box.y2, r.bottom) } : { x1: r.left, y1: r.top, x2: r.right, y2: r.bottom };
+      }
+    }
+    await this.seekClip(0);
+    if (!box) return null;
+    const room = Math.max(12, Math.min(60, 0.08 * Math.max(box.x2 - box.x1, box.y2 - box.y1)));
+    const x = Math.max(0, Math.floor(box.x1 - room));
+    const y = Math.max(0, Math.floor(box.y1 - room));
+    const w = Math.min(1920, Math.ceil(box.x2 + room)) - x;
+    const h = Math.min(1080, Math.ceil(box.y2 + room)) - y;
+    const def = entry.cls === "em" ? E.ANIM_EM?.[entry.fx] : E.ANIM_IN?.[entry.fx];
+    return { dur: Math.max(1, Math.round(length)), box: { x, y, w: w - (w % 2), h: h - (h % 2) }, lasting: Boolean(entry.cls === "em" && def?.lasting), loop: indefinite };
+  },
+
+  /** The filmed effect at `t` ms (its frames drawn for that moment). */
+  async seekClip(t) {
+    if (!clip) return;
+    for (const a of clip.anims()) { try { if (a.playState !== "paused") a.pause(); a.currentTime = Math.min(t, Number(a.effect?.getComputedTiming?.().endTime) || t); } catch { /* gone */ } }
+    await wait();
   },
 
   /** The whole slide as the show draws it (a page the reader could not take apart). */
