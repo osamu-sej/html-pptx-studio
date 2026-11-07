@@ -386,7 +386,8 @@ class Writer:
                 seg += f'<a:lnTo><a:pt x="{int(x * w)}" y="{int(y * h)}"/></a:lnTo>'
             if filled:
                 seg += "<a:close/>"
-            out += f'<a:path w="{w}" h="{h}"{"" if filled else " fill=\"none\""}>{seg}</a:path>'
+            no_fill = "" if filled else ' fill="none"'
+            out += f'<a:path w="{w}" h="{h}"{no_fill}>{seg}</a:path>'
         return f'<a:custGeom><a:avLst/><a:gdLst/><a:ahLst/><a:cxnLst/><a:rect l="0" t="0" r="r" b="b"/><a:pathLst>{out}</a:pathLst></a:custGeom>'
 
     # ---- text
@@ -478,7 +479,8 @@ class Writer:
                 if lst and lst["tag"] == "ol":
                     scheme = OL_SCHEMES.get(lst["style"] or "decimal", "arabicPeriod")
                     start = int(lst.get("start") or 1)
-                    bullet = f'<a:buAutoNum type="{scheme}"{f" startAt=\"{start}\"" if start > 1 else ""}/>'
+                    start_at = f' startAt="{start}"' if start > 1 else ""
+                    bullet = f'<a:buAutoNum type="{scheme}"{start_at}/>'
                 else:
                     char = pa.get("bullet") or UL_MARKS.get((lst or {}).get("style") or "disc", "●")
                     bullet = f'<a:buFont typeface="Arial"/><a:buChar char="{esc(char)}"/>'
@@ -537,7 +539,8 @@ class Writer:
         sid = self.new_id()
         name = esc(o.get("name") or f"{'テキスト ボックス' if text_box else '図形'} {sid}")
         descr = f' descr="{esc(o["alt"])}"' if o.get("alt") else ""
-        nv = f'<p:nvSpPr><p:cNvPr id="{sid}" name="{name}"{descr}/><p:cNvSpPr{" txBox=\"1\"" if text_box else ""}/><p:nvPr/></p:nvSpPr>'
+        tx_box = ' txBox="1"' if text_box else ""
+        nv = f'<p:nvSpPr><p:cNvPr id="{sid}" name="{name}"{descr}/><p:cNvSpPr{tx_box}/><p:nvPr/></p:nvSpPr>'
         sppr = f"<p:spPr>{self.xfrm(o)}{self.geometry(o)}{self.fill_xml(o)}{self.line_xml(o)}{self.effects_xml(o)}</p:spPr>"
         tx = f"<p:txBody>{self.body_pr(o)}<a:lstStyle/>{self.paragraphs(o, o.get('text'))}</p:txBody>"
         o["_spid"] = sid
