@@ -25,10 +25,12 @@ from pptx import Presentation
 from pptx.chart.data import CategoryChartData, XyChartData, BubbleChartData
 from pptx.enum.chart import XL_CHART_TYPE, XL_LEGEND_POSITION
 from pptx.opc.constants import RELATIONSHIP_TYPE as RT
+from pptx.opc.package import Part
 from pptx.util import Emu
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import pptx_exact as imp  # noqa: E402  (the importer's tables, read the other way)
+import pptx_timing as timing  # noqa: E402  (animations and transitions)
 
 EMU_PX = 6350
 SLIDE_W, SLIDE_H = 1920, 1080
@@ -38,6 +40,7 @@ NS = {"a": "http://schemas.openxmlformats.org/drawingml/2006/main",
 A = "{%s}" % NS["a"]
 P = "{%s}" % NS["p"]
 R = "{%s}" % NS["r"]
+P14 = "http://schemas.microsoft.com/office/powerpoint/2010/main"
 NSDECL = f'xmlns:a="{NS["a"]}" xmlns:p="{NS["p"]}" xmlns:r="{NS["r"]}"'
 
 # The studio's shape names are PowerPoint's preset names, except the few the importer renamed.
@@ -53,6 +56,9 @@ OL_SCHEMES = {"decimal": "arabicPeriod", "paren": "arabicParenR", "circled": "ci
               "upper-alpha": "alphaUcPeriod", "lower-roman": "romanLcPeriod", "upper-roman": "romanUcPeriod"}
 U_LINES = {"double": "dbl", "thick": "heavy", "dotted": "dotted", "dashed": "dash", "wavy": "wavy"}
 ANCHORS = {"top": "t", "middle": "ctr", "bottom": "b"}
+# Words as the browser's Japanese word breaker counts them, near enough: a run of Latin letters or digits, a run of
+# kana or kanji (two at most), or any other mark.
+WORD = re.compile(r"[A-Za-z0-9'’]+|[\u3040-\u30ff\u4e00-\u9fff]{1,2}|[^\s]")
 ALIGNS = {"left": "l", "center": "ctr", "right": "r", "justify": "just", "distributed": "dist"}
 
 
@@ -209,6 +215,19 @@ class RichParser(HTMLParser):
         self.para["runs"].append({"text": data, **self.stack[-1]})
 
 
+def speaker_png() -> bytes:
+    """A plain speaker icon (a sound's picture when the browser drew none)."""
+    from PIL import Image, ImageDraw
+    img = Image.new("RGBA", (96, 96), (0, 0, 0, 0))
+    d = ImageDraw.Draw(img)
+    d.polygon([(14, 36), (34, 36), (56, 16), (56, 80), (34, 60), (14, 60)], fill=(68, 114, 196, 255))
+    for r in (14, 26):
+        d.arc((56 - r, 48 - r, 56 + r, 48 + r), -50, 50, fill=(68, 114, 196, 255), width=6)
+    out = io.BytesIO()
+    img.save(out, "PNG")
+    return out.getvalue()
+
+
 def _px(value: str | None) -> float | None:
     m = re.match(r"^\s*(-?[\d.]+)px\s*$", value or "")
     return float(m.group(1)) if m else None
@@ -235,6 +254,7 @@ class Writer:
         self.prs = Presentation()
         self.prs.slide_width, self.prs.slide_height = Emu(SLIDE_W * EMU_PX), Emu(SLIDE_H * EMU_PX)
         self.next_id = 2
+        self.sound_parts: dict[str, Any] = {}
         self.stats = {"slides": 0, "objects": 0, "pictures": 0, "tables": 0, "charts": 0, "rasterized": 0}
 
     # ---- theme
@@ -460,6 +480,7 @@ class Writer:
         base = float(o.get("fs") or 36)  # px (a run's own size is px too)
         lh = float(o.get("lh") or 1.35)
         out = ""
+        units: list[list[int]] = []
         for para in parse_rich(html or ""):
             pa = para["attrs"]
             runs = para["runs"]
@@ -512,6 +533,9 @@ class Writer:
                 rtxt += f"<a:r>{self.run_props(o, run, base_size=base)}<a:t>{esc(text)}</a:t></a:r>"
             end = self.run_props(o, runs[-1] if runs else {}, tag="a:endParaRPr", base_size=base)
             out += f"<a:p>{ptag}{rtxt}{end}</a:p>"
+            words = "".join(run.get("text") or "" for run in runs)
+            units.append([len(re.sub(r"\s", "", words)), len(WORD.findall(words))])
+        self.last_paras = units
         return out or f"<a:p>{self.run_props(o, {}, tag='a:endParaRPr', base_size=base)}</a:p>"
 
     @staticmethod
@@ -547,6 +571,8 @@ class Writer:
         sppr = f"<p:spPr>{self.xfrm(o)}{self.geometry(o)}{self.fill_xml(o)}{self.line_xml(o)}{self.effects_xml(o)}</p:spPr>"
         tx = f"<p:txBody>{self.body_pr(o)}<a:lstStyle/>{self.paragraphs(o, o.get('text'))}</p:txBody>"
         o["_spid"] = sid
+        o["_paras"] = list(self.last_paras) if o.get("text") else []
+        o["_bg"] = "noFill" not in self.fill_xml(o) or "noFill" not in self.line_xml(o)
         return f"<p:sp {NSDECL}>{nv}{sppr}{tx}</p:sp>"
 
     def cxn(self, o: dict[str, Any]) -> str:
@@ -623,6 +649,61 @@ class Writer:
         if o.get("name"):
             mov._element.nvPicPr.cNvPr.set("name", o["name"])
         o["_spid"] = mov.shape_id
+        self.media_ext(mov._element, o)
+        self.stats["pictures"] += 1
+
+    def media_ext(self, el, o: dict[str, Any]) -> None:
+        """再生 options PowerPoint keeps with the media itself (p14:media): trimming, fading, bookmarks."""
+        media = el.find(f".//{{{P14}}}media")
+        if media is None:
+            return
+        for kid in list(media):
+            media.remove(kid)
+        ms = lambda v: str(int(round(float(v) * 1000)))  # noqa: E731
+        if o.get("trimStart") or o.get("trimEnd"):
+            trim = etree.SubElement(media, f"{{{P14}}}trim")
+            if o.get("trimStart"):
+                trim.set("st", ms(o["trimStart"]))
+            if o.get("trimEnd"):
+                trim.set("end", ms(o["trimEnd"]))
+        if o.get("fadeIn") or o.get("fadeOut"):
+            fade = etree.SubElement(media, f"{{{P14}}}fade")
+            if o.get("fadeIn"):
+                fade.set("in", ms(o["fadeIn"]))
+            if o.get("fadeOut"):
+                fade.set("out", ms(o["fadeOut"]))
+        marks = [m for m in (o.get("bookmarks") or []) if isinstance(m, dict) and m.get("t") is not None]
+        if marks:
+            lst = etree.SubElement(media, f"{{{P14}}}bmkLst")
+            for m in marks:
+                bm = etree.SubElement(lst, f"{{{P14}}}bmk")
+                bm.set("name", str(m.get("name") or m.get("id") or "")[:40])
+                bm.set("time", ms(m["t"]))
+
+    def sound(self, slide, o: dict[str, Any]) -> None:
+        """A sound PowerPoint plays itself: its icon (as the browser drew it) on the slide, the file inside."""
+        got = data_url(o.get("src") or "")
+        if not got:
+            return
+        raw, mime = got
+        ext = {"audio/mpeg": "mp3", "audio/mp3": "mp3", "audio/wav": "wav", "audio/x-wav": "wav", "audio/mp4": "m4a", "audio/x-m4a": "m4a",
+               "audio/aac": "m4a", "audio/ogg": "ogg", "audio/webm": "webm", "audio/flac": "flac"}.get(mime, "mp3")
+        part = Part(self.prs.part.package.next_media_partname(ext), mime if mime.startswith("audio/") else "audio/mpeg", self.prs.part.package, raw)
+        rid_media = slide.part.relate_to(part, RT.MEDIA)
+        rid_audio = slide.part.relate_to(part, RT.AUDIO)
+        icon = data_url(o.get("poster") or "") or (speaker_png(), "image/png")
+        _, rid_img = slide.part.get_or_add_image_part(io.BytesIO(icon[0]))
+        sid = self.new_id()
+        name = esc(o.get("name") or f"オーディオ {sid}")
+        el = etree.fromstring(
+            f'<p:pic {NSDECL} xmlns:p14="{P14}"><p:nvPicPr><p:cNvPr id="{sid}" name="{name}"><a:hlinkClick r:id="" action="ppaction://media"/></p:cNvPr>'
+            f'<p:cNvPicPr><a:picLocks noChangeAspect="1"/></p:cNvPicPr><p:nvPr><a:audioFile r:link="{rid_audio}"/>'
+            f'<p:extLst><p:ext uri="{{DAA4B4D4-6D71-4841-9C94-3DE7FCFB9230}}"><p14:media r:embed="{rid_media}"/></p:ext></p:extLst></p:nvPr></p:nvPicPr>'
+            f'<p:blipFill><a:blip r:embed="{rid_img}"/><a:stretch><a:fillRect/></a:stretch></p:blipFill>'
+            f'<p:spPr>{self.xfrm(o)}<a:prstGeom prst="rect"><a:avLst/></a:prstGeom></p:spPr></p:pic>')
+        slide.shapes._spTree.append(el)
+        o["_spid"] = sid
+        self.media_ext(el, o)
         self.stats["pictures"] += 1
 
     def table(self, slide, o: dict[str, Any]) -> None:
@@ -889,6 +970,11 @@ class Writer:
             pass
         elif kind == "video" and (o.get("src") or "").startswith("data:"):
             self.movie(slide, o)
+        elif kind == "audio":
+            if (o.get("src") or "").startswith("data:"):
+                self.sound(slide, o)
+            else:
+                self.stats["objects"] -= 1
         elif o.get("src") or o.get("png"):
             # Pictures, and what the browser drew as a picture (icons, SmartArt it could not split, equations, ink…).
             if kind != "image":
@@ -897,17 +983,156 @@ class Writer:
         else:
             self.stats["objects"] -= 1
 
+    # ---- groups
+    @staticmethod
+    def box_of(el) -> tuple[int, int, int, int] | None:
+        xf = el.find(f"{P}spPr/{A}xfrm")
+        if xf is None:
+            xf = el.find(f"{P}xfrm")
+        if xf is None:
+            xf = el.find(f"{P}grpSpPr/{A}xfrm")
+        if xf is None:
+            return None
+        off, ext = xf.find(A + "off"), xf.find(A + "ext")
+        if off is None or ext is None:
+            return None
+        x, y = int(off.get("x")), int(off.get("y"))
+        return x, y, x + int(ext.get("cx")), y + int(ext.get("cy"))
+
+    def group_shapes(self, slide, objects: list[dict[str, Any]], alone: set[str] | None = None) -> dict[str, dict[str, Any]]:
+        """
+        The studio's groups as PowerPoint groups (one part to select, move and animate) where their members lie one
+        after another; a group split by other parts keeps its members apart (they still move together).
+        """
+        tree = slide.shapes._spTree
+        members: dict[str, list[dict[str, Any]]] = {}
+        for o in objects:
+            if o.get("group") and o.get("_el") is not None:
+                members.setdefault(str(o["group"]), []).append(o)
+        out: dict[str, dict[str, Any]] = {}
+        for gid, list_ in members.items():
+            spids = [o["_spid"] for o in list_ if o.get("_spid")]
+            boxes = [b for b in (self.box_of(o["_el"]) for o in list_) if b]
+            box = {"x": 0.0, "y": 0.0, "w": 1.0, "h": 1.0}
+            if boxes:
+                x1, y1 = min(b[0] for b in boxes), min(b[1] for b in boxes)
+                x2, y2 = max(b[2] for b in boxes), max(b[3] for b in boxes)
+                box = {"x": x1 / EMU_PX, "y": y1 / EMU_PX, "w": max(1, x2 - x1) / EMU_PX, "h": max(1, y2 - y1) / EMU_PX}
+            index = sorted(list(tree).index(o["_el"]) for o in list_)
+            if len(list_) < 2 or index[-1] - index[0] + 1 != len(list_) or not boxes or any(str(o.get("id")) in (alone or set()) for o in list_):
+                out[gid] = {"spids": spids, "box": box}
+                continue
+            sid = self.new_id()
+            x, y, cx, cy = emu(box["x"]), emu(box["y"]), emu(box["w"]), emu(box["h"])
+            grp = etree.fromstring(
+                f'<p:grpSp {NSDECL}><p:nvGrpSpPr><p:cNvPr id="{sid}" name="グループ {sid}"/><p:cNvGrpSpPr/><p:nvPr/></p:nvGrpSpPr>'
+                f'<p:grpSpPr><a:xfrm><a:off x="{x}" y="{y}"/><a:ext cx="{cx}" cy="{cy}"/><a:chOff x="{x}" y="{y}"/><a:chExt cx="{cx}" cy="{cy}"/></a:xfrm></p:grpSpPr></p:grpSp>')
+            tree.insert(index[0], grp)
+            for o in sorted(list_, key=lambda m: list(tree).index(m["_el"])):
+                grp.append(o["_el"])
+            out[gid] = {"spids": [sid], "box": box, "group": True}
+        return out
+
+    # ---- animations, transitions, sounds
+    def morph_names(self, slides: list[dict[str, Any]]) -> None:
+        """変形: the pairs the studio morphs get one name on both slides ("!!…"), so PowerPoint pairs them the same."""
+        names: dict[tuple[int, str], str] = {}
+        n = 0
+        for i, s in enumerate(slides):
+            for a_id, b_id in s.get("morph") or []:
+                key = (i - 1, str(a_id))
+                if key not in names:
+                    n += 1
+                    names[key] = f"!!部品{n}"
+                names[(i, str(b_id))] = names[key]
+        for (i, oid), name in names.items():
+            if 0 <= i < len(slides):
+                for o in slides[i].get("objects") or []:
+                    if str(o.get("id")) == oid:
+                        o["name"] = name
+
+    def sound_rel(self, slide):
+        """A callback for the timing: the rId of one of the studio's sounds (made by the browser as WAV) on this slide."""
+        made: dict[str, str] = {}
+
+        def rel(name: str) -> str | None:
+            if name in made:
+                return made[name]
+            got = data_url((self.model.get("sounds") or {}).get(name) or "")
+            if not got:
+                return None
+            part = self.sound_parts.get(name)
+            if part is None:
+                part = Part(self.prs.part.package.next_media_partname("wav"), "audio/wav", self.prs.part.package, got[0])
+                self.sound_parts[name] = part
+            made[name] = slide.part.relate_to(part, RT.AUDIO)
+            return made[name]
+
+        return rel
+
+    def motion(self, slide, s: dict[str, Any], objects: list[dict[str, Any]], groups: dict[str, dict[str, Any]]) -> None:
+        targets: dict[str, timing.Target] = {}
+        media = []
+        for o in objects:
+            if not o.get("_spid"):
+                continue
+            kind = o.get("kind") or "shape"
+            if kind == "line":
+                x1, y1, x2, y2 = (float(o.get(k) or 0) for k in ("x1", "y1", "x2", "y2"))
+                box = {"x": min(x1, x2), "y": min(y1, y2), "w": abs(x2 - x1) or 1, "h": abs(y2 - y1) or 1}
+            else:
+                box = {k: float(o.get(k) or 0) for k in ("x", "y", "w", "h")}
+            targets[str(o.get("id"))] = timing.Target([o["_spid"]], box, kind=kind, paras=o.get("_paras"), has_text=bool(o.get("text")),
+                                                      media=kind if kind in ("video", "audio") else None, has_bg=bool(o.get("_bg")))
+            if kind in ("video", "audio"):
+                media.append({"id": str(o.get("id")), **{k: o.get(k) for k in ("kind", "autoplay", "loop", "volume", "muted", "across", "hideIdle", "hideIcon", "fullscreen")}})
+        for gid, g in groups.items():
+            targets[f"grp:{gid}"] = timing.Target(g["spids"], g["box"], kind="group" if g.get("group") else "split")
+        rel = self.sound_rel(slide)
+        t = timing.Timing(targets, rel)
+        xml_timing = t.write(s.get("timeline") or [], media)
+        self.stats["approximated"] = self.stats.get("approximated", 0) + t.approximated
+        self.stats["animations"] = self.stats.get("animations", 0) + len(s.get("timeline") or []) - t.skipped
+        root = slide._element
+        for old in [*root.findall(P + "transition"), *root.findall(P + "timing"), *root.findall(f"{{{timing.MC}}}AlternateContent")]:
+            root.remove(old)
+        anchor = root.find(P + "clrMapOvr")
+        if anchor is None:
+            anchor = root.find(P + "cSld")
+        at = list(root).index(anchor) + 1
+        tr = timing.transition_xml(s, rel)
+        if tr:
+            root.insert(at, xml(tr))
+            at += 1
+            if s.get("transition") == "morph":
+                self.stats["morph"] = self.stats.get("morph", 0) + 1
+        if xml_timing:
+            root.insert(at, xml(xml_timing))
+
     def write(self) -> bytes:
         self.write_theme()
         layout = self.prs.slide_layouts[6]
-        for s in self.model.get("slides") or []:
+        slides = self.model.get("slides") or []
+        self.morph_names(slides)
+        for s in slides:
             slide = self.prs.slides.add_slide(layout)
             self._slide = slide
             for ph in list(slide.placeholders):
                 ph._element.getparent().remove(ph._element)
             self.background(slide, s.get("background"))
-            for o in s.get("objects") or []:
+            tree = slide.shapes._spTree
+            objects = s.get("objects") or []
+            for o in objects:
+                before = len(tree)
                 self.add_object(slide, o)
+                if len(tree) > before:
+                    o["_el"] = tree[-1]
+            # PowerPoint animates (and starts triggers from) whole shapes only: a group one of whose members moves on
+            # its own, is a trigger or plays media stays as its members.
+            alone = {str(e.get("el")) for e in s.get("timeline") or []} | {str(e.get("trigger") or "").split("@")[0] for e in s.get("timeline") or []}
+            alone |= {str(o.get("id")) for o in objects if o.get("kind") in ("video", "audio")}
+            groups = self.group_shapes(slide, objects, alone)
+            self.motion(slide, s, objects, groups)
             self.notes(slide, s.get("notes") or "")
             if s.get("hidden"):
                 slide._element.set("show", "0")
@@ -921,6 +1146,7 @@ class Writer:
         return out.getvalue()
 
     _slide = None
+    last_paras: list[list[int]] = []
 
 
 def write_pptx(model: dict[str, Any]) -> tuple[bytes, dict[str, int]]:

@@ -1,7 +1,7 @@
 // PowerPoint出力 in a real browser: the sample deck goes to the server, which draws it in its headless browser and writes
 // an editable .pptx (server/pptx.mjs, tools/pptx_export.py). The download is opened with python-pptx and checked: every
 // slide, the theme as a PowerPoint theme, titles and key messages as text, layouts as shapes, a native chart, a picture
-// for what PowerPoint has no part for; a 白紙 page keeps its own objects; a check finding asks first and continues the
+// for what PowerPoint has no part for, the builds as PowerPoint animations, every slide part valid against ECMA-376; a 白紙 page keeps its own objects; a check finding asks first and continues the
 // PowerPoint export (not the HTML one).
 // Usage: node qa/studio-pptx.mjs [--base=http://127.0.0.1:8787]   (with `npm start` running)
 import { execFileSync } from "node:child_process";
@@ -41,18 +41,42 @@ import json, sys
 from pptx import Presentation
 from lxml import etree
 A = "{http://schemas.openxmlformats.org/drawingml/2006/main}"
+P = "{http://schemas.openxmlformats.org/presentationml/2006/main}"
+MC = "http://schemas.openxmlformats.org/markup-compatibility/2006"
+schema = etree.XMLSchema(etree.parse(sys.argv[2]))
 prs = Presentation(sys.argv[1])
 theme = etree.fromstring(prs.slide_master.part.part_related_by("http://schemas.openxmlformats.org/officeDocument/2006/relationships/theme").blob)
 out = {"size": [prs.slide_width, prs.slide_height], "accent1": theme.find(f".//{A}accent1/{A}srgbClr").get("val"),
        "major": theme.find(f".//{A}majorFont/{A}ea").get("typeface"), "slides": []}
+def flat(shapes):
+    # A group's members (the studio's groups are PowerPoint groups).
+    for sh in shapes:
+        if sh.shape_type == 6:
+            yield from flat(sh.shapes)
+        else:
+            yield sh
 for s in prs.slides:
     shapes = []
-    for sh in s.shapes:
+    for sh in flat(s.shapes):
         kind = "chart" if sh.has_chart else "table" if sh.has_table else "picture" if sh.shape_type == 13 else "text" if sh.has_text_frame else str(sh.shape_type)
         shapes.append({"kind": kind, "text": sh.text_frame.text if sh.has_text_frame else ""})
-    out["slides"].append({"shapes": shapes, "notes": s.notes_slide.notes_text_frame.text if s.has_notes_slide else ""})
+    # The slide's animations and transition as PowerPoint reads them, and whether the part is valid (ECMA-376).
+    el = etree.fromstring(etree.tostring(s._element))
+    effects = [c.get("presetClass") for c in el.iter(f"{P}cTn") if c.get("presetClass")]
+    tops = {c.get("id") for c in el.findall(f"{P}cSld/{P}spTree/*/*/{P}cNvPr")}
+    inner = sorted({t.get("spid") for t in el.iter(f"{P}spTgt")} - tops)
+    has_tr = el.find(f"{P}transition") is not None or el.find(f"{{{MC}}}AlternateContent") is not None
+    for alt in list(el.iter(f"{{{MC}}}AlternateContent")):
+        fb, parent = alt.find(f"{{{MC}}}Fallback"), alt.getparent()
+        i = list(parent).index(alt)
+        parent.remove(alt)
+        for k, kid in enumerate(list(fb) if fb is not None else []):
+            parent.insert(i + k, kid)
+    valid = schema.validate(el)
+    out["slides"].append({"shapes": shapes, "notes": s.notes_slide.notes_text_frame.text if s.has_notes_slide else "", "effects": effects,
+                          "transition": has_tr, "valid": valid, "inner": inner, "errors": [e.message[:160] for e in list(schema.error_log)[:2]]})
 print(json.dumps(out, ensure_ascii=False))`;
-  return JSON.parse(execFileSync(python, ["-c", code, file]).toString());
+  return JSON.parse(execFileSync(python, ["-c", code, file, join(root, "test", "ooxml-xsd", "pml.xsd")]).toString());
 }
 
 async function exportFile(name, click) {
@@ -97,6 +121,16 @@ await step("the sample deck goes out as an editable PowerPoint (the top bar's Po
   assert(kinds.filter((k) => k === "text").length > 60, `the layouts as shapes and text boxes: ${kinds.filter((k) => k === "text").length}`);
   assert(kinds.includes("chart"), "a chart PowerPoint can edit");
   assert(got.slides.some((s, i) => sample.slides[i].notes && s.notes === sample.slides[i].notes), "speaker notes");
+  // Every slide part is valid (PowerPoint opens it without repairing), the layouts' builds are PowerPoint animations
+  // (entrances), and every slide has its transition.
+  const invalid = got.slides.map((s, i) => [i + 1, s.errors]).filter(([i]) => !got.slides[i - 1].valid);
+  assert(!invalid.length, `valid slide parts: ${JSON.stringify(invalid)}`);
+  const animated = got.slides.filter((s) => s.effects.includes("entr")).length;
+  assert(animated >= 5, `the layouts' builds as PowerPoint entrances: ${animated} slides`);
+  assert(got.slides.every((s) => s.transition), "every slide's transition");
+  // PowerPoint animates whole shapes only (never a member of a group).
+  const inner = got.slides.map((s, i) => [i + 1, s.inner]).filter(([, list]) => list.length);
+  assert(!inner.length, `animations on whole shapes: ${JSON.stringify(inner)}`);
 });
 
 await step("a 白紙 page keeps its own objects (a shape with words, a table) and an icon becomes a picture", async () => {

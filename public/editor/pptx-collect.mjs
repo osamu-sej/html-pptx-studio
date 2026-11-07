@@ -9,6 +9,8 @@ import { createConverter, convertedSlide } from "./convert.mjs";
 const E = window.SlideEngine;
 const h = E.h;
 let deck = null;
+// The slide before (its objects as written), for 変形: PowerPoint pairs objects by name, the studio by morphPairs.
+let previous = null;
 const app = {
   E,
   h,
@@ -125,8 +127,13 @@ window.__pptx = {
       const el = await mount(slide, index);
       const fit = E.fit(el);
       bakeFit(objects, fit.objs);
-      // The title (unless the page hides it) and the foot the studio draws on a 白紙 page.
-      objects = [...(await converter.chromeObjects(index)), ...objects];
+      // The title (unless the page hides it) and the foot the studio draws on a 白紙 page; an animation on the
+      // title ("@title") moves its text box.
+      const chrome = await converter.chromeObjects(index);
+      const fields = {};
+      for (const o of chrome) if (o.field && !fields[o.field]) fields[o.field] = o.id;
+      timeline = timeline.map((e) => (fields[e?.el] ? { ...e, el: fields[e.el] } : e));
+      objects = [...chrome.map(({ field, ...o }) => o), ...objects];
     } else {
       const result = await converter.convert(index, { chrome: true, any: true });
       const made = convertedSlide(slide, result.objects, result.timeline);
@@ -135,6 +142,13 @@ window.__pptx = {
     }
     if (!objects.length && slide.type !== "blank") whole = true;
     if (deck.masterObjects?.length && !slide.hideMaster) objects = [...clone(deck.masterObjects).map((o) => ({ ...o, master: true })), ...objects];
+    // The animations as the show plays them: known effects on parts that are on this slide, numbers in range.
+    timeline = E.normalizeTimeline?.(timeline, { elements: objects }) ?? [];
+    const transition = slide.transition || deck.transition || "fade";
+    // 変形: the parts the studio carries from the slide before (written with one name on both, "!!…").
+    const morph = transition === "morph" && previous?.index === index - 1 && E.morphPairs
+      ? E.morphPairs(previous.objects, objects).map(([a, b]) => [a.id, b.id]) : [];
+    previous = { index, objects: clone(objects) };
     const rasters = [];
     for (const o of objects) {
       if (!NATIVE.has(o.kind)) rasters.push(o.id);
@@ -146,11 +160,21 @@ window.__pptx = {
     }
     const background = slide.background ? { ...slide.background, ...(slide.background.image ? { image: await dataUrl(slide.background.image) } : {}) } : null;
     return {
-      objects, timeline, background, whole, rasters,
+      objects, timeline, background, whole, rasters, morph,
       notes: slide.notes || "", hidden: Boolean(slide.hidden),
-      transition: slide.transition || deck.transition || "fade", transitionDir: slide.transitionDir || null,
-      advance: slide.advance ?? null,
+      transition, transitionDir: slide.transitionDir || null, transitionDur: Number(slide.transitionDur) || null,
+      transitionSound: slide.transitionSound || null, advance: slide.advance ?? null,
     };
+  },
+
+  /** The studio's sounds by name as WAV files (they are synthesised in the show; PowerPoint plays files). */
+  async sounds(names) {
+    const out = {};
+    for (const name of new Set(names)) {
+      const wav = await E.renderSound?.(name).catch(() => null);
+      if (wav) out[name] = wav;
+    }
+    return out;
   },
 
   /** One object drawn alone on a clear slide: its box on the page (the server takes the picture). */

@@ -820,16 +820,21 @@
     ringing.clear();
   }
   /** Play a transition sound (a key of E.TRANSITION_SOUNDS). Returns how long it rings (s), or 0. */
-  function playSound(kind, { volume = 0.6 } = {}) {
-    if (kind === "stop") { stopSounds(); return 0; }
+  // `context`: an OfflineAudioContext to draw the sound into instead of playing it (renderSound).
+  function playSound(kind, { volume = 0.6, context = null } = {}) {
+    if (kind === "stop") { if (!context) stopSounds(); return 0; }
     if (!E.TRANSITION_SOUNDS?.[kind]) return 0;
-    const ac = audio();
+    const ac = context || audio();
     if (!ac) return 0;
     const t0 = ac.currentTime + 0.02;
     const out = ac.createGain();
     out.gain.value = Math.max(0, Math.min(1, volume));
     out.connect(ac.destination);
-    const keep = (node, start, stop) => { ringing.add(node); node.onended = () => ringing.delete(node); node.start(start); node.stop(stop); };
+    const keep = (node, start, stop) => {
+      if (!context) { ringing.add(node); node.onended = () => ringing.delete(node); }
+      node.start(start);
+      node.stop(stop);
+    };
     // A tone: frequency (Hz), wave, start, length, peak level, optional slide to another pitch.
     const tone = (freq, { type = "sine", at = 0, len = 0.6, peak = 0.4, to = null } = {}) => {
       const osc = ac.createOscillator();
@@ -886,6 +891,30 @@
       bell: () => { for (const [m, p] of [[1, 0.35], [2.76, 0.18], [5.4, 0.1], [8.93, 0.05]]) tone(523.25 * m, { len: 2 / Math.sqrt(m), peak: p }); return 2.1; },
     };
     try { return SOUNDS[kind](); } catch { return 0; }
+  }
+
+  /**
+   * One of the transition sounds as a WAV file (a data: URL, 16-bit mono), drawn offline with the same oscillators and
+   * noise the show plays — for a PowerPoint, which plays sound files (tools/pptx_timing.py).
+   */
+  async function renderSound(kind, { volume = 0.6, rate = 44100 } = {}) {
+    const OAC = typeof window !== "undefined" && (window.OfflineAudioContext || window.webkitOfflineAudioContext);
+    if (!OAC || !E.TRANSITION_SOUNDS?.[kind] || kind === "stop") return null;
+    const ac = new OAC(1, Math.round(rate * 3), rate);
+    const len = playSound(kind, { volume, context: ac });
+    if (!len) return null;
+    const buffer = await ac.startRendering();
+    const data = buffer.getChannelData(0).subarray(0, Math.min(buffer.length, Math.round(rate * (len + 0.12))));
+    const bytes = new Uint8Array(44 + data.length * 2);
+    const view = new DataView(bytes.buffer);
+    const text = (at, s) => { for (let i = 0; i < s.length; i += 1) view.setUint8(at + i, s.charCodeAt(i)); };
+    text(0, "RIFF"); view.setUint32(4, 36 + data.length * 2, true); text(8, "WAVE"); text(12, "fmt ");
+    view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, rate, true);
+    view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); text(36, "data"); view.setUint32(40, data.length * 2, true);
+    for (let i = 0; i < data.length; i += 1) view.setInt16(44 + i * 2, Math.max(-1, Math.min(1, data[i])) * 0x7fff, true);
+    let binary = "";
+    for (let i = 0; i < bytes.length; i += 0x8000) binary += String.fromCharCode(...bytes.subarray(i, i + 0x8000));
+    return `data:audio/wav;base64,${btoa(binary)}`;
   }
 
   /**
@@ -1991,5 +2020,5 @@ html,body{margin:0;height:100%;background:#0d1017;color:#e8ecf4;font-family:"Not
   /** How long a transition takes when the slide does not say (ms). */
   const transitionMs = (type) => (type === "none" ? 0 : TRANSITION_MS[type] ?? 620);
 
-  Object.assign(E, { play, reveal, stepsOf, countUp, activate, playMedia, stopMedia, mountLottie, stopLottie, splitKinetic, createPlayer, engineCss, transitionPreview, transitionMs, morphIn, playSound, stopSounds });
+  Object.assign(E, { play, reveal, stepsOf, countUp, activate, playMedia, stopMedia, mountLottie, stopLottie, splitKinetic, createPlayer, engineCss, transitionPreview, transitionMs, morphIn, playSound, stopSounds, renderSound });
 })(typeof window !== "undefined" ? window : globalThis);
