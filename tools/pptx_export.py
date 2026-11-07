@@ -426,7 +426,9 @@ class Writer:
             t = o["toutline"]
             inner += f'<a:ln w="{emu(float(t.get("w") or 2))}">{self.colors.solid(t.get("color"))}</a:ln>'
         color = run.get("color") or o.get("color")
-        if color:
+        if o.get("hollow") and not run.get("color"):
+            inner += "<a:noFill/>"
+        elif color:
             inner += self.colors.solid(color)
         fx = ""
         if o.get("tglow"):

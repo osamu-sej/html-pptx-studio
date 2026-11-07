@@ -165,16 +165,26 @@ window.__pptx = {
     return { x: r.left, y: r.top, w: r.width, h: r.height };
   },
 
-  /** The theme's art behind a slide (its decoration and background), alone: whether there is any to take. */
+  /**
+   * What lies under a slide's content (its ground, the theme's art, a full-bleed photo), alone: whether there is anything
+   * to take besides the theme's own 背景 1 (which the PowerPoint's master already has).
+   */
   async mountBackdrop(index) {
     const slide = deck.slides[index];
     const el = await mount({ ...slide, elements: [], timeline: undefined }, index);
     el.classList.add("hs-only-decor");
     await wait();
+    const CONTENT = new Set(["hs-frame", "hs-overlay", "hs-objects", "hs-foot", "hs-master-layer", "hs-vlabel"]);
     const decor = el.querySelector(".hs-decor");
-    const art = decor && (decor.children.length || ["::before", "::after"].some((p) => { const cs = getComputedStyle(decor, p); return cs.content !== "none" && cs.content !== "normal"; })
+    const decorArt = decor && (decor.children.length || ["::before", "::after"].some((p) => { const cs = getComputedStyle(decor, p); return cs.content !== "none" && cs.content !== "normal"; })
       || getComputedStyle(decor).backgroundImage !== "none");
-    return { art: Boolean(art) };
+    const layers = [...el.children].some((child) => ![...child.classList].some((c) => CONTENT.has(c) || c === "hs-decor" || c === "hs-bg") && getComputedStyle(child).display !== "none");
+    const parse = (c) => (c.match(/\d+(\.\d+)?/g) || []).slice(0, 3).map(Number);
+    const ground = parse(getComputedStyle(el).backgroundColor);
+    const bg1 = E.themeColors(deck.theme).bg1;
+    const own = [1, 3, 5].map((i) => parseInt(bg1.slice(i, i + 2), 16));
+    const otherGround = ground.length === 3 && ground.some((v, i) => Math.abs(v - own[i]) > 2);
+    return { art: Boolean(decorArt || layers || otherGround || el.querySelector(".hs-bg")) };
   },
 
   /** The whole slide as the show draws it (a page the reader could not take apart). */

@@ -11,8 +11,9 @@
     /* A clear slide: only the object being photographed shows (no ground, no decoration, no footer). */
     #stage.is-clear .hs-slide { background: transparent !important; }
     #stage.is-clear .hs-decor, #stage.is-clear .hs-foot, #stage.is-clear .hs-frame, #stage.is-clear .hs-bg { display: none !important; }
-    /* The theme's art alone: the decoration over the ground, nothing of the slide's content. */
-    .hs-only-decor > :not(.hs-decor):not(.hs-bg) { visibility: hidden !important; }
+    /* What lies under the slide's content alone: the ground, the theme's art, a full-bleed photo and its scrim
+       (the content, the objects and the foot are written as PowerPoint parts). */
+    .hs-only-decor > :is(.hs-frame, .hs-overlay, .hs-objects, .hs-foot, .hs-master-layer, .hs-vlabel) { visibility: hidden !important; }
     /* PowerPoint sets Japanese without proportional punctuation ("palt"): measure the words as it will set them. */
     .hs-slide, .hs-slide * { font-feature-settings: normal !important; }
     /* Nothing moves while it is photographed. */

@@ -769,16 +769,24 @@ export function createConverter(app) {
         if (/center/.test(across)) align = "center"; else if (/(flex-)?end|right/.test(across)) align = "right";
         if (/center/.test(down)) valign = "middle"; else if (/(flex-)?end/.test(down)) valign = "bottom";
       } else if (cs.display === "table-cell") valign = cs.verticalAlign === "middle" ? "middle" : cs.verticalAlign === "bottom" ? "bottom" : "top";
-      const color = parseColor(cs.webkitTextFillColor) || parseColor(cs.color);
+      // Letters drawn as outlines only (a transparent fill and a stroke): the stroke is their outline.
+      const strokeW = parseFloat(cs.webkitTextStrokeWidth) || 0;
+      const hollow = strokeW > 0 && /^(transparent|rgba\([^)]*,\s*0\))$/.test(cs.webkitTextFillColor || "");
+      const color = hollow ? parseColor(cs.webkitTextStrokeColor) || parseColor(cs.color) : parseColor(cs.webkitTextFillColor) || parseColor(cs.color);
       const family = cs.fontFamily || "";
-      const font = /^"?BIZ UDP/i.test(family) ? "ud" : /教科書|Kyokasho|Klee/i.test(family) ? "kyokasho" : undefined;
+      // The face the words are set in: the theme's heading font, its body font (the default), or a face of its own.
+      const first = family.split(",")[0].trim().replace(/^["']|["']$/g, "");
+      const theme = E.THEMES.find((t) => t.id === app.deck()?.theme);
+      const font = /^"?BIZ UDP/i.test(family) ? "ud" : /教科書|Kyokasho|Klee/i.test(family) ? "kyokasho" : first && first === theme?.officeFonts?.heading && first !== theme?.officeFonts?.body ? "heading" : undefined;
+      const face = !font && first && first !== theme?.officeFonts?.body && /^[\p{L}\p{N}\s._+-]{1,60}$/u.test(first) ? { fontFace: first } : {};
       const ls = cs.letterSpacing === "normal" ? 0 : parseFloat(cs.letterSpacing) / fs;
       const deco = cs.textDecorationLine || "";
       return {
         fs: r2(fs), color: inkOf(color), lh: r2(clamp(Number.isFinite(lh) ? lh : 1.3, 0.8, 4)), align, valign,
         ...(weightOf(cs) === 700 ? { bold: true } : {}), ...(cs.fontStyle === "italic" ? { italic: true } : {}),
         ...(deco.includes("underline") ? { underline: true } : {}), ...(deco.includes("line-through") ? { strike: true } : {}),
-        ...(font ? { font } : {}), ...(Math.abs(ls) > 0.004 ? { ls: r2(clamp(ls, -0.2, 1)) } : {}),
+        ...(font ? { font } : {}), ...face, ...(hollow ? { toutline: { w: r2(clamp(strokeW, 0.25, 24)), color: inkOf(color) }, hollow: true } : {}),
+        ...(Math.abs(ls) > 0.004 ? { ls: r2(clamp(ls, -0.2, 1)) } : {}),
         ...(/nowrap|^pre$/.test(cs.whiteSpace) ? { wrap: false } : {}), ...(/^vertical/.test(cs.writingMode) ? { vertical: true } : {}),
       };
     }
@@ -1241,6 +1249,7 @@ export function createConverter(app) {
       if (!o) continue;
       // What only a PowerPoint export uses (the slide's object normalizer does not keep it).
       if (atom.o.pointColors) o.pointColors = atom.o.pointColors;
+      if (atom.o.hollow) o.hollow = true;
       objects.push(o);
       if (atom.item && targets.has(atom.item) && o.kind !== "line") { if (!byItem.has(atom.item)) byItem.set(atom.item, []); byItem.get(atom.item).push(o); }
       if (atom.g != null) { if (!byG.has(atom.g)) byG.set(atom.g, []); byG.get(atom.g).push(o); }
