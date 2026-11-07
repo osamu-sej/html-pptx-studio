@@ -706,7 +706,9 @@ test("layouts that look alike are chosen again: a plain outline is sent back, th
     assert.equal(written.status, "completed", written.error);
     assert.equal(written.attempt, 1);
     const sent = await prompts();
-    assert.equal(sent.length, 4);
+    // Three for the outline, two for the deck (8 slides from an outline are written 4 at a time).
+    assert.equal(sent.length, 5);
+    assert.match(sent[4], /5〜8枚目だけ/);
     assert.match(sent[0], /横に並ぶ流れ: process・timeline・roadmap/);
     assert.match(sent[1], /「横に並ぶ流れ」（工程・年表・ロードマップ・レーン図）の見た目が4枚あります（3・4・6・7枚目）/);
     assert.match(sent[1], /骨子全体のJSONをもう一度返してください/);
@@ -862,4 +864,46 @@ test("an existing PowerPoint is imported into an editable deck and its text can 
   } finally {
     await server.stop();
   }
+});
+
+test("a long deck is written a few slides at a time: from an outline, or when an answer does not fit", async () => {
+  const deck = shortDeck(8);
+  const part = (from, to) => ({ ...deck, slideData: deck.slideData.slice(from - 1, to) });
+  const outline = deck.slideData.map((slide) => ({ type: slide.type, title: slide.title, takeaway: "", content: "" }));
+  const input = { brief: "テスト", settings: { slideCount: 8, textDensity: "standard" }, outline };
+  // From an outline: 4 slides per answer, the parts joined and checked as one deck.
+  await withFakeCodex([part(1, 4), part(5, 8)], async (server, prompts) => {
+    const job = await waitForJob(server, (await (await server.postJson("/api/decks", input)).json()).jobId);
+    assert.equal(job.status, "completed", job.error);
+    assert.equal(job.deck.slideData.length, 8);
+    assert.deepEqual(job.deck.slideData.map((s) => s.title), deck.slideData.map((s) => s.title));
+    const sent = await prompts();
+    assert.equal(sent.length, 2);
+    assert.match(sent[0], /全8枚のうち1〜4枚目だけ/);
+    assert.match(sent[1], /全8枚のうち5〜8枚目だけ/);
+  });
+  // Without an outline the deck is asked for at once; an answer cut off at the output limit is asked again in parts.
+  const tooLong = { __fail: { message: "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens" } };
+  await withFakeCodex([tooLong, part(1, 4), part(5, 8)], async (server, prompts) => {
+    const started = await (await server.postJson("/api/decks", { brief: "テスト", settings: { slideCount: 8, textDensity: "standard" } })).json();
+    assert.ok(started.jobId, JSON.stringify(started));
+    const job = await waitForJob(server, started.jobId);
+    assert.equal(job.status, "completed", job.error);
+    assert.equal(job.deck.slideData.length, 8);
+    const sent = await prompts();
+    assert.equal(sent.length, 3);
+    assert.doesNotMatch(sent[0], /何回かに分けて/);
+    assert.match(sent[1], /4枚ずつ何回かに分けて/);
+    assert.match(sent[2], /5〜8枚目だけ/);
+  });
+  // A part that still does not fit is asked again two slides at a time; a whole deck in a part keeps its own slides.
+  await withFakeCodex([part(1, 4), tooLong, deck, part(7, 8)], async (server, prompts) => {
+    const job = await waitForJob(server, (await (await server.postJson("/api/decks", input)).json()).jobId);
+    assert.equal(job.status, "completed", job.error);
+    assert.deepEqual(job.deck.slideData.map((s) => s.title), deck.slideData.map((s) => s.title));
+    const sent = await prompts();
+    assert.match(sent[2], /途中で切れました/);
+    assert.match(sent[2], /5〜6枚目だけ/);
+    assert.match(sent[3], /7〜8枚目だけ/);
+  });
 });

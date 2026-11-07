@@ -100,6 +100,10 @@
 
 - 機能追加・不具合修正を入れたら `package.json` の version を上げ（`npm version 1.2.0 --no-git-tag-version`）、README の「更新履歴」に1行書く。画面左上の版表示で、ユーザーが最新版かどうかを見分けるため。
 
+## AIでの資料の生成
+
+- 資料（`kind: "deck"`）は Codex の1回の回答に入りきらないことがある（出力の上限 `max_output_tokens`。推論と JSON の両方が入る）。server.js の `startDeckJob` は骨子から作る `DECK_PART`（4）枚より多い資料を、codex-app-server.mjs の `runJob` の `parts` で数枚ずつ書かせる（`partPrompt` が「全N枚のうちa〜b枚目だけ」を頼み、`#handleAnswer` がつなげてから1回だけ品質チェックに通す。分けて書いた資料の自動修正は全体の書き直しになるので頼まず、問題は要確認として残す）。骨子なしでも、回答が上限で切れたら（`tooLong`）`#failTurn` が分けて頼み直し、分けた1回も切れたら2枚ずつにする。変えたら `test/server.test.js` を通す。
+
 ## 確認
 
 - `npm test`（CodexとOllamaは偽物で代用）と `npm run test:py`（取り込み・書き出しの Python）。
