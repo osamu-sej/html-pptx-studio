@@ -34,7 +34,7 @@ jobs:
           - name: show
             scripts: studio-show,studio-review,studio-more,studio-present
           - name: live
-            scripts: studio-rehearse,studio-3d,studio-live,studio-tools,layouts
+            scripts: studio-rehearse,studio-3d,studio-live,studio-tools,studio-pptx,layouts
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4

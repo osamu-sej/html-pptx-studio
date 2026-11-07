@@ -23,7 +23,7 @@ const LAYOUTS = [
 ];
 
 const found = (await readdir(join(root, "qa"))).filter((f) => /^studio-.*\.mjs$/.test(f)).map((f) => f.replace(/\.mjs$/, "")).sort();
-const ORDER = ["studio-smoke", "studio-editing", "studio-ai-mock", "studio-motion", "studio-drill", "studio-interactive", "studio-objects", "studio-animations", "studio-tables", "studio-convert", "studio-import", "studio-interact", "studio-layout", "studio-motion-ide", "studio-powerpoint", "studio-media", "studio-graphics", "studio-coedit", "studio-draw", "studio-show", "studio-review", "studio-more", "studio-format", "studio-present", "studio-rehearse", "studio-3d", "studio-live", "studio-tools"];
+const ORDER = ["studio-smoke", "studio-editing", "studio-ai-mock", "studio-motion", "studio-drill", "studio-interactive", "studio-objects", "studio-animations", "studio-tables", "studio-convert", "studio-import", "studio-interact", "studio-layout", "studio-motion-ide", "studio-powerpoint", "studio-media", "studio-graphics", "studio-coedit", "studio-draw", "studio-show", "studio-review", "studio-more", "studio-format", "studio-present", "studio-rehearse", "studio-3d", "studio-live", "studio-tools", "studio-pptx"];
 // A script added without joining ORDER still runs (after the known ones) so it cannot be forgotten.
 const all = [...ORDER.filter((n) => found.includes(n)), ...found.filter((n) => !ORDER.includes(n)), "layouts"];
 if ("list" in args) { console.log(all.join("\n")); process.exit(0); }

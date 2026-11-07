@@ -1,9 +1,11 @@
 FROM node:22-bookworm-slim
 
 # Python reads existing PowerPoint / PDF / Word files (tools/). Slides themselves are drawn in the browser.
+# PowerPoint への書き出し draws the deck in a headless Chromium (server/pptx.mjs); ffmpeg turns recorded motion into video.
 RUN apt-get update \
-  && apt-get install -y --no-install-recommends python3 python3-pip \
+  && apt-get install -y --no-install-recommends python3 python3-pip chromium fonts-noto-cjk ffmpeg \
   && rm -rf /var/lib/apt/lists/*
+ENV CHROME_PATH=/usr/bin/chromium
 
 WORKDIR /app
 COPY package.json package-lock.json ./
