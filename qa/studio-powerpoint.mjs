@@ -188,10 +188,14 @@ await step("コメント: someone else's thread, @ suggestions in a reply, repli
   const reply = d.slides[1].comments.find((x) => x.id === "sato1").replies?.[0];
   assert(reply && reply.text === "@佐藤 単位は億円です" && reply.by === "山田 太郎", `the reply: ${JSON.stringify(reply)}`);
   assert(await page.locator('#commentPane .cm-item[data-id="sato1"] .cm-reply .pp-mention').count(), "the reply's @name is marked");
-  await page.locator("#commentPane .cm-item").first().locator('button:has-text("編集")').first().click();
+  // My own thread (the first comment), edited from its own 編集 button; wait until the deck has it.
+  const mine = d.slides[1].comments[0].id;
+  await page.locator(`#commentPane .cm-item[data-id="${mine}"] > * button:has-text("編集"), #commentPane .cm-item[data-id="${mine}"] button:has-text("編集")`).first().click();
+  await page.waitForSelector("#commentPane .cm-edit-input");
   await page.fill("#commentPane .cm-edit-input", "数字の出所（年度）を確認してください");
   await page.click("#commentPane .cm-save");
-  await page.waitForTimeout(300);
+  await page.waitForFunction((id) => window.__hpptx.deck().slides[1].comments.find((c) => c.id === id)?.edited, mine, { timeout: 5000 })
+    .catch(async () => { throw new Error(`edited, and marked as edited: ${JSON.stringify((await deck()).slides[1].comments)}`); });
   d = await deck();
   assert(d.slides[1].comments[0].text === "数字の出所（年度）を確認してください" && d.slides[1].comments[0].edited, "edited, and marked as edited");
   assert(/編集済み/.test(await page.textContent("#commentPane .cm-item")), "（編集済み）");

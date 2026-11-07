@@ -87,19 +87,23 @@ export async function collectModel(deck, { base, timeoutMs = 240_000 }) {
       // Objects PowerPoint has no part for: their picture, where they are drawn (rotation and effects included).
       const shots = new Set(s.rasters);
       for (const [k, o] of s.objects.entries()) {
-        if (!shots.has(o.id) && o.kind !== "video") continue;
+        if (!shots.has(o.id) && o.kind !== "video" && o.kind !== "audio") continue;
         const r = await page.evaluate(([index, obj]) => window.__pptx.mountObject(index, obj), [i, o]);
         if (!(r.w > 0 && r.h > 0)) continue;
         const clip = { x: Math.max(0, r.x), y: Math.max(0, r.y), width: Math.min(1920, r.x + r.w) - Math.max(0, r.x), height: Math.min(1080, r.y + r.h) - Math.max(0, r.y) };
         if (clip.width <= 0 || clip.height <= 0) continue;
         const png = dataUrl(await page.screenshot({ type: "png", clip, omitBackground: true }));
-        if (o.kind === "video") { o.poster = png; continue; }
+        // A video's first picture, a sound's icon: PowerPoint shows them as the studio draws them.
+        if (o.kind === "video" || o.kind === "audio") { o.poster = png; continue; }
         s.objects[k] = { id: o.id, kind: "picture", from: o.kind, name: o.name, alt: o.alt, x: clip.x, y: clip.y, w: clip.width, h: clip.height, src: png };
       }
       slides.push(s);
     }
+    // The sounds the slides play (画面切り替えのサウンド, an effect's サウンド), made once for the whole deck.
+    const names = slides.flatMap((s) => [s.transitionSound, ...(s.timeline || []).map((e) => e.sound)]).filter((n) => n && n !== "stop");
+    const sounds = names.length ? await page.evaluate((list) => window.__pptx.sounds(list), names) : {};
     if (errors.length) console.warn(`pptx export: ${errors.slice(0, 3).join(" | ")}`);
-    return { title: info.title, theme: info.theme, tableStyles: TABLE_STYLE_IDS, slides };
+    return { title: info.title, theme: info.theme, tableStyles: TABLE_STYLE_IDS, slides, sounds };
   } finally {
     await context.close().catch(() => {});
   }

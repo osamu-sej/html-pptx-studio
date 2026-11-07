@@ -306,7 +306,7 @@ const ENTRANCE_FX = { rise: ["floatIn", "up"], fade: ["fade"], blur: ["fade"], p
  * items ("@g1") follow their item to its group; the rest stay as they were.
  * `groups`: [{ g, target }] in the order of the items.
  */
-export function buildTimeline({ build, entrance, groups, timeline = [] }) {
+export function buildTimeline({ build, entrance, groups, fields = {}, timeline = [] }) {
   const [fx, dir] = ENTRANCE_FX[entrance] || ENTRANCE_FX.rise;
   const out = [];
   let n = 0;
@@ -322,7 +322,7 @@ export function buildTimeline({ build, entrance, groups, timeline = [] }) {
   const byG = new Map(groups.map(({ g, target }) => [g, target]));
   for (const entry of Array.isArray(timeline) ? timeline : []) {
     const m = /^@g(\d+)$/.exec(entry?.el || "");
-    if (!m) { out.push(entry); continue; }
+    if (!m) { out.push(fields[entry?.el] ? { ...entry, el: fields[entry.el] } : entry); continue; }
     const target = byG.get(Number(m[1]));
     if (target) out.push({ ...entry, el: target, ...(entry.by ? { by: undefined } : {}) });
   }
@@ -387,8 +387,8 @@ export function createConverter(app) {
       materializePseudos(el);
       const reader = createReader(el, { slide, deck, opts, chrome });
       const atoms = reader.read();
-      const { objects, groups } = finish(atoms, slide, deck, index);
-      const timeline = buildTimeline({ build, entrance, groups, timeline: slide.timeline });
+      const { objects, groups, fields } = finish(atoms, slide, deck, index);
+      const timeline = buildTimeline({ build, entrance, groups, fields, timeline: slide.timeline });
       return { objects, timeline, slide: convertedSlide(slide, objects, timeline) };
     } finally {
       host.remove();
@@ -474,7 +474,8 @@ export function createConverter(app) {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (!opts.fit) E.fit(el);
       const atoms = createReader(el, { slide, deck, opts, chrome: true, only: true }).read();
-      return atoms.map((atom) => E.normalizeObject(atom.o)).filter(Boolean);
+      // Each keeps which part it is ("@title", "@takeaway"), for the animations on those parts (a PowerPoint export).
+      return atoms.map((atom) => { const o = E.normalizeObject(atom.o); if (o && atom.field) o.field = atom.field; return o; }).filter(Boolean);
     } finally {
       host.remove();
     }
@@ -498,12 +499,14 @@ export function createConverter(app) {
         if (o.kind === "text") { if (o.valign === "top") o.h = r2(y2 - y1); }
         else Object.assign(o, { x: r2(x1), y: r2(y1), w: r2(x2 - x1), h: r2(y2 - y1) });
       }
-      atoms.push({ o, g: ctx.g, item: ctx.item, pair });
+      atoms.push({ o, g: ctx.g, item: ctx.item, field: ctx.field, pair });
     };
     const ctxFor = (el, ctx) => {
       const next = { ...ctx };
       if (next.g == null && el.dataset?.g != null && el.dataset.g !== "") next.g = Number(el.dataset.g);
       if (next.item == null && el.dataset?.item) next.item = el.dataset.item;
+      // The title and the key message (read with the chrome): an animation on "@title" follows them.
+      if (next.field == null && (el.dataset?.field === "title" || el.dataset?.field === "takeaway")) next.field = `@${el.dataset.field}`;
       return next;
     };
     const opacityOf = (a) => (a < 0.98 ? { opacity: r2(Math.max(0.05, a)) } : {});
@@ -1244,6 +1247,7 @@ export function createConverter(app) {
     const pairs = new Map();
     const seed = Math.random().toString(36).slice(2, 6);
     const byItem = new Map();
+    const byField = new Map();
     for (const atom of atoms) {
       const o = E.normalizeObject(atom.o);
       if (!o) continue;
@@ -1252,6 +1256,7 @@ export function createConverter(app) {
       if (atom.o.hollow) o.hollow = true;
       objects.push(o);
       if (atom.item && targets.has(atom.item) && o.kind !== "line") { if (!byItem.has(atom.item)) byItem.set(atom.item, []); byItem.get(atom.item).push(o); }
+      if (atom.field) { if (!byField.has(atom.field)) byField.set(atom.field, []); byField.get(atom.field).push(o); }
       if (atom.g != null) { if (!byG.has(atom.g)) byG.set(atom.g, []); byG.get(atom.g).push(o); }
       else if (atom.pair) { if (!pairs.has(atom.pair)) pairs.set(atom.pair, []); pairs.get(atom.pair).push(o); }
       if (objects.length >= 300) break;
@@ -1268,7 +1273,15 @@ export function createConverter(app) {
     for (const [item, list] of byItem) list.reduce((a, b) => (b.w * b.h > a.w * a.h ? b : a)).item = item;
     // A tinted box and its outline (drawn apart, see addShape) move together.
     for (const [pair, list] of pairs) if (list.length > 1) for (const o of list) o.group = `cv${seed}${pair}`;
-    return { objects, groups };
+    // The title and the key message: one text box (or a group of its pieces) each, for "@title" and "@takeaway".
+    const fields = {};
+    for (const [field, list] of byField) {
+      if (list.length === 1) { fields[field] = list[0].id; continue; }
+      const id = `cv${seed}${field.slice(1)}`;
+      for (const o of list) if (!o.group) o.group = id;
+      fields[field] = list.every((o) => o.group === id) ? `grp:${id}` : list[0].id;
+    }
+    return { objects, groups, fields };
   }
 
   return { convert, refusal, chromeObjects };

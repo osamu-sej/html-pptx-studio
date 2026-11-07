@@ -6286,8 +6286,13 @@ async function exportPptx({ checked = false } = {}) {
     state.historyId = saveHistory({ exported: fileName });
     let stats = {};
     try { stats = JSON.parse(response.headers.get("x-export-stats") || "{}"); } catch { /* none */ }
-    const pictures = stats.rasterized ? `（PowerPoint にない部品${stats.rasterized}か所は図として入れました）` : "";
-    toast(`PowerPoint に書き出しました${pictures}${missing.length ? `。${missing.join("・")}枚目の写真・動画は見つからなかったので外しました` : ""}`);
+    const notes = [
+      stats.animations ? `アニメーション${stats.animations}件は PowerPoint のアニメーションに` : "",
+      stats.approximated ? `HTMLならではの動き${stats.approximated}件は近い PowerPoint の動きに` : "",
+      stats.rasterized ? `PowerPoint にない部品${stats.rasterized}か所は図に` : "",
+    ].filter(Boolean);
+    const detail = notes.length ? `（${notes.join("、")}しました）` : "";
+    toast(`PowerPoint に書き出しました${detail}${missing.length ? `。${missing.join("・")}枚目の写真・動画は見つからなかったので外しました` : ""}`);
   } catch (error) {
     toast(`PowerPoint に書き出せませんでした：${error.message}`);
   } finally {

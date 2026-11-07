@@ -2117,70 +2117,177 @@ ENTRANCES = {1: "appear", 2: "flyIn", 3: "randomBars", 4: "shape", 5: "randomBar
              23: "zoom", 26: "bounce", 30: "floatIn", 31: "growTurn", 35: "pinwheel", 37: "rise", 42: "floatIn", 45: "swivel", 47: "floatIn",
              49: "spinner", 53: "zoom", 55: "expand"}
 EMPHASES = {1: "fillColor", 3: "fontColor", 6: "growShrink", 7: "lineColor", 8: "spin", 9: "transparency", 10: "boldFlash",
-            14: "blink", 19: "desaturate", 21: "brighten", 26: "pulse", 27: "colorPulse", 32: "teeter", 34: "wave", 36: "pulse"}
+            14: "blink", 18: "underline", 19: "desaturate", 21: "brighten", 24: "darken", 25: "desaturate", 26: "pulse", 27: "colorPulse",
+            30: "brighten", 32: "teeter", 34: "wave", 35: "blink", 36: "pulse"}
 FLY_DIRS = {1: "top", 2: "right", 3: "topRight", 4: "bottom", 6: "bottomRight", 8: "left", 9: "topLeft", 12: "bottomLeft"}
 WIPE_DIRS = {1: "top", 2: "right", 4: "bottom", 8: "left"}
+# A wipe out is named by where it starts (the other side from the studio's, which plays the entrance backwards).
+WIPE_OUT_DIRS = {1: "bottom", 2: "left", 4: "top", 8: "right"}
+SPLIT_DIRS = {42: "hOut", 26: "hIn", 37: "vOut", 21: "vIn"}
+SHAPE_KINDS = {4: "box", 6: "circle", 8: "diamond", 13: "plus"}
+STRETCH_DIRS = {10: "across", 8: "left", 2: "right", 1: "top", 4: "bottom"}
+ITERATES = {"lt": "char", "wd": "word"}
+
+
+def effect_entry(ctn, by_spid, deck: Deck) -> dict[str, Any] | None:
+    """One PowerPoint effect (a cTn with a presetClass) as a timeline entry, or None."""
+    cls = ctn.get("presetClass")
+    target = next((t for t in ctn.iter(P + "spTgt")), None)
+    spid = target.get("spid") if target is not None else None
+    el = by_spid.get(spid or "")
+    if not el:
+        return None
+    preset = int(ctn.get("presetID", 0) or 0)
+    sub = int(ctn.get("presetSubtype", 0) or 0)
+    start = {"clickEffect": "click", "withEffect": "with", "afterEffect": "after"}.get(ctn.get("nodeType"), "click")
+    # The effect's length: where its last behaviour ends (a delay and a back-and-forth count).
+    ends = []
+    kids = ctn.find(P + "childTnLst")
+    for beh in (kids if kids is not None else []):
+        inner = beh.find(f"{P}cBhvr/{P}cTn")
+        if inner is None or not (inner.get("dur") or "").isdigit():
+            continue
+        if inner.get("afterEffect") in ("1", "true"):
+            continue
+        cond = inner.find(f"{P}stCondLst/{P}cond")
+        at = int(cond.get("delay")) if cond is not None and (cond.get("delay") or "").isdigit() else 0
+        ends.append(at + int(inner.get("dur")) * (2 if inner.get("autoRev") in ("1", "true") else 1))
+    delay_el = ctn.find(f"{P}stCondLst/{P}cond")
+    delay = int(delay_el.get("delay")) if delay_el is not None and (delay_el.get("delay") or "").isdigit() else 0
+    entry: dict[str, Any] = {"el": el, "start": start}
+    if cls in ("entr", "exit"):
+        fx = ENTRANCES.get(preset, "fade")
+        entry.update({"cls": "in" if cls == "entr" else "out", "fx": fx})
+        if fx == "flyIn" and FLY_DIRS.get(sub):
+            entry["dir"] = FLY_DIRS[sub]
+        elif fx == "wipe" and WIPE_DIRS.get(sub):
+            entry["dir"] = (WIPE_OUT_DIRS if cls == "exit" else WIPE_DIRS)[sub]
+        elif fx == "split" and SPLIT_DIRS.get(sub):
+            entry["dir"] = SPLIT_DIRS[sub]
+        elif fx == "shape":
+            entry["dir"] = SHAPE_KINDS.get(preset, "circle") + ("In" if sub == 16 else "Out")
+        elif fx == "wheel" and sub in (1, 2, 3, 4, 8):
+            entry["dir"] = str(sub)
+        elif fx == "randomBars":
+            entry["dir"] = "v" if sub == 5 else "h"
+        elif fx == "zoom":
+            entry["dir"] = "center" if sub == 528 else "out" if sub == 32 else "in"
+        elif fx == "floatIn":
+            entry["dir"] = "down" if preset == 47 else "up"
+        elif fx == "stretch" and STRETCH_DIRS.get(sub):
+            entry["dir"] = STRETCH_DIRS[sub]
+        elif fx == "swivel":
+            entry["dir"] = "v" if sub == 5 else "h"
+    elif cls == "emph":
+        fx = EMPHASES.get(preset, "pulse")
+        entry.update({"cls": "em", "fx": fx})
+        rots = [int(r.get("by")) for r in ctn.iter(P + "animRot") if (r.get("by") or "").lstrip("-").isdigit()]
+        if fx == "spin" and rots:
+            entry["amount"] = round(abs(rots[0]) / 60000)
+            if rots[0] < 0:
+                entry["dir"] = "ccw"
+        scale = next((b for b in ctn.iter(P + "by") if b.getparent().tag == P + "animScale"), None)
+        if fx == "growShrink" and scale is not None:
+            x, y = int(scale.get("x") or 100000), int(scale.get("y") or 100000)
+            entry["amount"] = round(max(x, y) / 1000) if x == y or y == 100000 or x == 100000 else round(x / 1000)
+            if x != y:
+                entry["dir"] = "h" if y == 100000 else "v" if x == 100000 else "both"
+                entry["amount"] = round((x if y == 100000 else y) / 1000)
+        if fx in ("fillColor", "lineColor", "fontColor", "colorPulse"):
+            clr = next((c for c in ctn.iter(A + "srgbClr") if c.getparent().tag == P + "to"), None)
+            if clr is not None and re.fullmatch(r"[0-9A-Fa-f]{6}", clr.get("val") or ""):
+                entry["color"] = "#" + clr.get("val").lower()
+        if fx == "transparency":
+            for st in ctn.iter(P + "set"):
+                name = st.find(f"{P}cBhvr/{P}attrNameLst/{P}attrName")
+                val = st.find(f"{P}to/{P}strVal")
+                if name is not None and name.text == "style.opacity" and val is not None:
+                    try:
+                        entry["amount"] = round((1 - float(val.get("val"))) * 100)
+                    except (TypeError, ValueError):
+                        pass
+    elif cls == "mediacall":
+        # 再生・一時停止・停止 of a video or a sound (the engine keeps them only on media).
+        fx = {1: "play", 2: "pause", 3: "stop"}.get(preset)
+        if not fx:
+            return None
+        entry.update({"cls": "media", "fx": fx})
+        ends = []
+    elif cls == "path":
+        motion = next((m for m in ctn.iter(P + "animMotion")), None)
+        pts = path_points(motion.get("path", "") if motion is not None else "", deck)
+        if len(pts) < 2:
+            return None
+        entry.update({"cls": "path", "fx": "custom", "path": {"pts": pts}})
+    else:
+        return None
+    if ends:
+        entry["dur"] = max(1, max(ends))
+    if delay:
+        entry["delay"] = delay
+    if target is not None and target.find(P + "txEl") is not None:
+        entry["by"] = "para"
+    it = ctn.find(P + "iterate")
+    if it is not None and ITERATES.get(it.get("type")) and cls != "path":
+        entry["by"] = ITERATES[it.get("type")]
+    # 効果のオプション → タイミング: smooth start and end, repeats, back and forth, rewind.
+    accel, decel = int(ctn.get("accel") or 0), int(ctn.get("decel") or 0)
+    if accel or decel:
+        entry["ease"] = "smooth" if accel and decel else "in" if accel else "out"
+    elif cls in ("entr", "exit", "emph", "path"):
+        entry["ease"] = "linear"
+    rep = ctn.get("repeatCount") or ""
+    if rep == "indefinite":
+        entry["repeat"] = "click" if ctn.find(P + "endCondLst") is not None else "slide"
+    elif rep.isdigit() and int(rep) >= 2000:
+        entry["repeat"] = min(20, int(rep) // 1000)
+    if ctn.get("autoRev") in ("1", "true"):
+        entry["autoReverse"] = True
+    if ctn.get("fill") == "remove" and cls != "mediacall":
+        entry["rewind"] = True
+    # アニメーションの後: what an effect sets once it is over (dimmed, hidden).
+    for st in ctn.iter(P + "set"):
+        inner = st.find(f"{P}cBhvr/{P}cTn")
+        if inner is None or inner.get("afterEffect") not in ("1", "true"):
+            continue
+        name = st.find(f"{P}cBhvr/{P}attrNameLst/{P}attrName")
+        val = st.find(f"{P}to/{P}strVal")
+        if name is not None and name.text == "style.visibility" and val is not None and val.get("val") == "hidden":
+            entry["after"] = "hide"
+        elif name is not None and name.text == "style.opacity":
+            entry["after"] = "dim"
+    return entry
 
 
 def timeline_of(slide_el, by_spid, deck: Deck) -> list[dict[str, Any]]:
     timing = slide_el.find(P + "timing")
     if timing is None:
         return []
-    seq = None
-    for node in timing.iter(P + "cTn"):
-        if node.get("nodeType") == "mainSeq":
-            seq = node
-            break
-    if seq is None:
-        return []
     out = []
-    for ctn in seq.iter(P + "cTn"):
-        cls = ctn.get("presetClass")
-        if not cls:
+    for seq in timing.iter(P + "cTn"):
+        kind = seq.get("nodeType")
+        if kind not in ("mainSeq", "interactiveSeq"):
             continue
-        target = next((t for t in ctn.iter(P + "spTgt")), None)
-        spid = target.get("spid") if target is not None else None
-        el = by_spid.get(spid or "")
-        if not el:
-            continue
-        preset = int(ctn.get("presetID", 0))
-        sub = int(ctn.get("presetSubtype", 0))
-        start = {"clickEffect": "click", "withEffect": "with", "afterEffect": "after"}.get(ctn.get("nodeType"), "click")
-        durs = [int(c.get("dur")) for c in ctn.iter(P + "cTn") if (c.get("dur") or "").isdigit()]
-        delay_el = ctn.find(f"{P}stCondLst/{P}cond")
-        delay = int(delay_el.get("delay")) if delay_el is not None and (delay_el.get("delay") or "").isdigit() else 0
-        entry: dict[str, Any] = {"el": el, "start": start}
-        if cls in ("entr", "exit"):
-            fx = ENTRANCES.get(preset, "fade")
-            entry.update({"cls": "in" if cls == "entr" else "out", "fx": fx})
-            if fx == "flyIn" and FLY_DIRS.get(sub):
-                entry["dir"] = FLY_DIRS[sub]
-            if fx == "wipe" and WIPE_DIRS.get(sub):
-                entry["dir"] = WIPE_DIRS[sub]
-        elif cls == "emph":
-            entry.update({"cls": "em", "fx": EMPHASES.get(preset, "pulse")})
-        elif cls == "mediacall":
-            # 再生・一時停止・停止 of a video or a sound (the engine keeps them only on media).
-            fx = {1: "play", 2: "pause", 3: "stop"}.get(preset)
-            if not fx:
+        trigger = None
+        if kind == "interactiveSeq":
+            # トリガー: the sequence starts when a shape is clicked.
+            cond = next((c for c in seq.iter(P + "cond") if c.get("evt") == "onClick"), None)
+            tgt = cond.find(f"{P}tgtEl/{P}spTgt") if cond is not None else None
+            trigger = by_spid.get(tgt.get("spid") if tgt is not None else "")
+            if not trigger:
                 continue
-            entry.update({"cls": "media", "fx": fx})
-            durs = []
-        elif cls == "path":
-            motion = next((m for m in ctn.iter(P + "animMotion")), None)
-            pts = path_points(motion.get("path", "") if motion is not None else "", deck)
-            if len(pts) < 2:
+        for ctn in seq.iter(P + "cTn"):
+            if not ctn.get("presetClass"):
                 continue
-            entry.update({"cls": "path", "fx": "custom", "path": {"pts": pts}})
-        else:
-            continue
-        if durs:
-            entry["dur"] = max(1, max(durs))
-        if delay:
-            entry["delay"] = delay
-        if target is not None and target.find(P + "txEl") is not None:
-            entry["by"] = "para"
-        out.append(entry)
+            entry = effect_entry(ctn, by_spid, deck)
+            if not entry:
+                continue
+            if trigger:
+                # A video's own 再生/一時停止 on a click of itself is how PowerPoint plays any video: not an animation.
+                if entry.get("cls") == "media" and entry["el"] == trigger:
+                    continue
+                entry["trigger"] = trigger
+            out.append(entry)
     if len(out) > 5000:
         raise ValueError("アニメーションが5000件を超えています。")
     return out
@@ -2222,14 +2329,47 @@ def media_settings(slide_el) -> dict[str, dict[str, Any]]:
 
 
 def path_points(path: str, deck: Deck) -> list[list[float]]:
-    """A motion path ("M 0 0 L 0.25 0.1 E", fractions of the slide) as pixel offsets."""
-    nums = re.findall(r"-?\d*\.?\d+(?:[eE]-?\d+)?", path)
-    pts = []
-    for i in range(0, len(nums) - 1, 2):
-        pts.append([round(float(nums[i]) * deck.cx * deck.k, 1), round(float(nums[i + 1]) * deck.cy * deck.k, 1)])
-    if len(pts) > 2000:
+    """
+    A motion path ("M 0 0 L 0.25 0.1 C … E", fractions of the slide) as pixel offsets; a curve (C) is followed at a
+    few points along it, so the part travels the same way.
+    """
+    tokens = re.findall(r"[MLCZEmlcze]|-?\d*\.?\d+(?:[eE]-?\d+)?", path)
+    kx, ky = deck.cx * deck.k, deck.cy * deck.k
+    pts: list[list[float]] = []
+    cmd = "M"
+    nums: list[float] = []
+
+    def emit(cmd_: str, args: list[float]):
+        if cmd_ in "MmLl" and len(args) >= 2:
+            pts.append([args[0], args[1]])
+        elif cmd_ in "Cc" and len(args) >= 6 and pts:
+            x0, y0 = pts[-1]
+            (x1, y1), (x2, y2), (x3, y3) = (args[0], args[1]), (args[2], args[3]), (args[4], args[5])
+            for k in range(1, 9):
+                t = k / 8
+                u = 1 - t
+                pts.append([u ** 3 * x0 + 3 * u * u * t * x1 + 3 * u * t * t * x2 + t ** 3 * x3,
+                            u ** 3 * y0 + 3 * u * u * t * y1 + 3 * u * t * t * y2 + t ** 3 * y3])
+
+    need = {"M": 2, "L": 2, "C": 6}
+    for tok in tokens:
+        if tok.isalpha():
+            cmd = tok.upper()
+            nums = []
+            if cmd == "Z" and pts:
+                pts.append(list(pts[0]))
+            continue
+        nums.append(float(tok))
+        n = need.get(cmd)
+        if n and len(nums) == n:
+            emit(cmd, nums)
+            nums = []
+            if cmd == "M":
+                cmd = "L"
+    out = [[round(x * kx, 1), round(y * ky, 1)] for x, y in pts]
+    if len(out) > 2000:
         raise ValueError("アニメーションの軌跡が2000点を超えています。")
-    return pts
+    return out
 
 
 TRANSITIONS = {"fade": "fade", "dissolve": "fade", "push": "push", "wipe": "wipe", "cover": "slide", "pull": "slide", "split": "curtain",
