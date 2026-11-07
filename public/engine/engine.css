@@ -976,6 +976,9 @@ li > .hs-detail-badge, li > .hs-drill-badge { top: 50%; right: 0; transform: tra
 @keyframes hs-zoom-in { from { opacity: 0; transform: scale(1.22); filter: blur(8px); } to { opacity: 1; transform: none; filter: none; } }
 @keyframes hs-flip-in { from { opacity: 0; transform: perspective(1400px) rotateX(-75deg); } to { opacity: 1; transform: none; } }
 @keyframes hs-wipe-in { from { clip-path: inset(-120px 100% -120px -120px); } to { clip-path: inset(-120px -120px -120px -120px); } }
+/* the showpieces: turn one and a half times in 3D as they come forward; whirl in from far away */
+@keyframes hs-spin-in { 0% { opacity: 0; transform: perspective(1600px) rotateY(-540deg) scale(.55); } 40% { opacity: 1; } 100% { opacity: 1; transform: none; } }
+@keyframes hs-swirl-in { 0% { opacity: 0; transform: rotate(-200deg) scale(.15); filter: blur(10px); } 55% { opacity: 1; filter: none; } 80% { transform: rotate(8deg) scale(1.04); } 100% { opacity: 1; transform: none; } }
 @keyframes hs-drop-in { 0% { opacity: 0; transform: translateY(-80px); } 55% { opacity: 1; transform: translateY(12px); } 78% { transform: translateY(-5px); } 100% { opacity: 1; transform: none; } }
 /* more photo motion: drift across, lean in 3D, open like a curtain */
 @keyframes hs-photo-drift { from { transform: scale(1.16) translate(-3%, 2%); } to { transform: scale(1.16) translate(3%, -2%); } }
@@ -1012,6 +1015,11 @@ li > .hs-detail-badge, li > .hs-drill-badge { top: 50%; right: 0; transform: tra
 .hs-slide[data-entrance="wipe"] { --hs-in: hs-wipe-in; }
 .hs-slide[data-entrance="drop"] { --hs-in: hs-drop-in; }
 .hs-slide[data-entrance="flip"] :is(.hs-head > *, .hs-enter, [data-g]) { transform-origin: 50% 0; }
+.hs-slide[data-entrance="spin"] { --hs-in: hs-spin-in; }
+.hs-slide[data-entrance="swirl"] { --hs-in: hs-swirl-in; }
+/* a showpiece takes its time: the turn is the point */
+.hs-slide.hs-play[data-entrance="spin"] :is(.hs-head > *, .hs-enter, [data-g]), .hs-slide[data-entrance="spin"] [data-g].hs-in { animation-duration: 1.35s !important; transform-origin: 50% 50%; backface-visibility: visible; }
+.hs-slide.hs-play[data-entrance="swirl"] :is(.hs-head > *, .hs-enter, [data-g]), .hs-slide[data-entrance="swirl"] [data-g].hs-in { animation-duration: 1.2s !important; transform-origin: 50% 50%; }
 .hs-slide.hs-play [data-g] { animation: var(--hs-in, hs-rise) .7s var(--ease-out) both; animation-delay: .32s; }
 .hs-slide.hs-play[data-build="cascade"] [data-g] { animation-delay: calc(var(--g) * 170ms + .36s); }
 .hs-slide.hs-play[data-build="click"] [data-g] { animation: none; }

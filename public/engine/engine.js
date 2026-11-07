@@ -109,6 +109,8 @@
   const ENTRANCES = {
     rise: "下から浮かび上がる", fade: "ふわっと現れる", blur: "ぼかしから現れる", pop: "はじけるように現れる",
     slide: "左から滑り込む", zoom: "手前から迫ってくる", flip: "めくれるように現れる", wipe: "幕が開くように現れる", drop: "弾んで落ちてくる",
+    // The showpieces (見せ場): parts turn in 3D, or whirl in from far away.
+    spin: "3Dで回転しながら現れる", swirl: "渦を巻いて飛び込む",
   };
   const HOVERS = { lift: "項目が浮き上がる", focus: "乗せた項目以外を薄くする", tilt: "3Dで傾く", glow: "光で縁取る", zoom: "少し大きくなる" };
   const EMPHASES = { marker: "マーカーを引く", underline: "下線を引く", circle: "手書きの丸で囲む", box: "枠で囲む", glow: "光らせる", none: "色だけ（飾りなし）" };

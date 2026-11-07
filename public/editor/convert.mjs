@@ -298,7 +298,7 @@ const distinct = (pts) => pts.filter((p, i) => i === 0 || Math.hypot(p[0] - pts[
 // ---------------------------------------------------------------- the layout's build as animations
 
 // The layout's way in (data-entrance) as the nearest PowerPoint entrance.
-const ENTRANCE_FX = { rise: ["floatIn", "up"], fade: ["fade"], blur: ["fade"], pop: ["zoom", "in"], slide: ["flyIn", "left"], zoom: ["zoom", "in"], flip: ["swivel", "h"], wipe: ["wipe", "left"], drop: ["bounce"], none: ["appear"] };
+const ENTRANCE_FX = { rise: ["floatIn", "up"], fade: ["fade"], blur: ["fade"], pop: ["zoom", "in"], slide: ["flyIn", "left"], zoom: ["zoom", "in"], flip: ["swivel", "h"], wipe: ["wipe", "left"], drop: ["bounce"], spin: ["swivel", "h"], swirl: ["pinwheel"], none: ["appear"] };
 
 /**
  * The layout's build as timeline entries on the converted groups: click by click (click, spotlight), one after

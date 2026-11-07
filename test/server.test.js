@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { isShowpiece } from "../server/showpieces.mjs";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
@@ -877,6 +878,8 @@ test("a long deck is written a few slides at a time: from an outline, or when an
     assert.equal(job.status, "completed", job.error);
     assert.equal(job.deck.slideData.length, 8);
     assert.deepEqual(job.deck.slideData.map((s) => s.title), deck.slideData.map((s) => s.title));
+    // The deck the AI wrote without motion still has its showpieces (見せ場).
+    assert.ok(job.deck.slideData.filter(isShowpiece).length >= 3, JSON.stringify(job.deck.slideData.map((s) => [s.type, s.entrance, s.kinetic, s.backdrop, s.transition])));
     const sent = await prompts();
     assert.equal(sent.length, 2);
     assert.match(sent[0], /全8枚のうち1〜4枚目だけ/);
