@@ -9,6 +9,13 @@
 - 動き：PowerPoint の標準アニメーション（開始・強調・終了・軌跡、クリック時／直前と同時／直前の後）と画面切り替え（変形を含む）で表せるものはそのまま置き換える。HTMLにしかない動きは、**その部品だけ**を録画して動画として埋め込み、スライドショーで同じタイミングに再生させる。動画にした部品の元のデータは .pptx の中に残し、取り込み直すと編集できる状態に戻る。
 - 実際の PowerPoint はこの環境にないので、動きの最終確認はユーザーが PowerPoint の発表者ビューで行う。区切りごとに確認用の .pptx を渡す。
 
+## PowerPoint出力（書き出し）
+
+- 流れ：スタジオ（app.js の `exportPptx`）が `portableDeck()`（メディアを中に入れた資料）を `/api/export/pptx` に送る → `server/pptx.mjs` が見えない Chromium（`playwright-core`、ブラウザは `CHROME_PATH`）で `/export.html` を開き、`public/editor/pptx-collect.mjs` が1枚ずつ部品の一覧にする → PowerPoint にない部品・テーマの背景の飾り・読み取れないページはサーバーが撮影して図にする → `tools/pptx_export.py` が .pptx を書く。1回に1つずつ（`serially`）。
+- レイアウトのスライドは convert.mjs の `convert(index, { chrome: true, any: true })`（見出し・キーメッセージ・ページ下の行も文字に。表紙・章扉なども読む）、白紙のページは自分の部品と `chromeObjects(index)`。書き出し用の描画では「palt」を切る（PowerPoint にない字詰め。export.html）。半透明の色は透明度のまま、テーマの色に近い色だけテーマの色にそろえる。
+- pptx_export.py は pptx_exact.py（取り込み）の表を逆に使う：図形の名前（`PRESETS`）・調整値（`ADJ_SCALE`・`ADJ_ANGLES`）・矢印・線種。色はテーマの色なら schemeClr（lumMod/lumOff）、表のスタイルは組み込みスタイルの ID（server/pptx.mjs の `TABLE_STYLE_IDS`）に加えてセルごとの書式（`table_look`＝engine.css の `.ts-*` と同じ規則）、文字の行間は `spcPts` の固定値、1行の文字は `wrap="none"`。
+- 書き出しを変えたら `test/test_pptx_export.py`（書いて、python-pptx と pptx_exact.py で読み戻す）と `qa/studio-pptx.mjs` を通し、LibreOffice で描いた結果をスタジオの見た目と並べて見比べる。
+
 ## テーマ（PowerPoint のテーマ）
 
 - テーマは `public/engine/engine.js` の `THEMES`（8種類、既定は `clarity`）。各テーマは PowerPoint のテーマでもあり、`colors`（背景 1・テキスト 1・背景 2・テキスト 2・アクセント 1〜6・ハイパーリンク）と `officeFonts`（見出し・本文）を持つ。スライドの CSS（engine.css のテーマの変数）と同じ値にそろえる。
@@ -93,8 +100,8 @@
 
 ## 確認
 
-- `npm test`（CodexとOllamaは偽物で代用）。
+- `npm test`（CodexとOllamaは偽物で代用）と `npm run test:py`（取り込み・書き出しの Python）。
 - ブラウザQAは `qa/run.mjs`（`npm run qa:all`）でまとめて走らせる。サーバーを自分で立て、スクリプトごとに「終了コード0・`errors:` が出ていない・最後の行が `no errors`」をすべて確かめ、落ちたら1回だけ再試行して（再試行で通ったら flaky と警告）、所要時間の表を出す。`--only=studio-format,layouts` で一部だけ、`layouts` は全テーマ×全レイアウトの撮影（`shoot.mjs --strict`＝文字が収まらないページが1つでもあれば失敗）。GitHub Actions の `.github/workflows/qa.yml` が PR と main への push でこれを7つのシャードに分けて並列に走らせる（日本語フォントは IPA、Chromium は Playwright 1.56.1）。QAスクリプトを足したら、`qa/run.mjs` の `ORDER` と `qa.yml` のシャードに入れる。スクリプトは失敗したら必ず `process.exit(1)` で終わる（終わらないと CI が気づけない）。手順の待ちは `waitForTimeout` の固定値でなく `waitForFunction`／`waitForSelector` にする。
-- 画面にかかわる変更は、`npm start` のあと `qa/studio-smoke.mjs`・`studio-editing.mjs`・`studio-ai-mock.mjs`・`studio-motion.mjs`・`studio-drill.mjs`・`studio-interactive.mjs`・`studio-objects.mjs`・`studio-animations.mjs`・`studio-tables.mjs`・`studio-convert.mjs`・`studio-import.mjs`・`studio-interact.mjs`・`studio-layout.mjs`・`studio-motion-ide.mjs`・`studio-powerpoint.mjs`・`studio-media.mjs`・`studio-graphics.mjs`・`studio-coedit.mjs`・`studio-draw.mjs`・`studio-show.mjs`・`studio-review.mjs`・`studio-more.mjs`・`studio-format.mjs`・`studio-present.mjs`・`studio-rehearse.mjs`・`studio-3d.mjs`・`studio-live.mjs`・`studio-tools.mjs` を実際のブラウザで通す。リボンは狭い幅だとグループを1つのボタンに折りたたむので、QAでボタンを探すときは折りたたんだグループも開く。
+- 画面にかかわる変更は、`npm start` のあと `qa/studio-smoke.mjs`・`studio-editing.mjs`・`studio-ai-mock.mjs`・`studio-motion.mjs`・`studio-drill.mjs`・`studio-interactive.mjs`・`studio-objects.mjs`・`studio-animations.mjs`・`studio-tables.mjs`・`studio-convert.mjs`・`studio-import.mjs`・`studio-interact.mjs`・`studio-layout.mjs`・`studio-motion-ide.mjs`・`studio-powerpoint.mjs`・`studio-media.mjs`・`studio-graphics.mjs`・`studio-coedit.mjs`・`studio-draw.mjs`・`studio-show.mjs`・`studio-review.mjs`・`studio-more.mjs`・`studio-format.mjs`・`studio-present.mjs`・`studio-rehearse.mjs`・`studio-3d.mjs`・`studio-live.mjs`・`studio-tools.mjs`・`studio-pptx.mjs` を実際のブラウザで通す。リボンは狭い幅だとグループを1つのボタンに折りたたむので、QAでボタンを探すときは折りたたんだグループも開く。
 - 深掘りページ（`drillOf`）は元のスライドの直後に置く本編外のページ。本編の並び・番号は `E.storyMap`（engine.js）とサーバーの `drillParents`（server/chat.mjs）が同じ決まりで求める。
 - レイアウトの「見た目のグループ」と単調さのチェックは `public/layout-looks.mjs` にあり、サーバー（AIへの指示・自動の選び直し）とスタジオ（チェック・骨子の画面）が同じものを使う。

@@ -26,6 +26,7 @@ import { LocalModel } from "./server/local-ai.mjs";
 import { reconcileChatVisuals, slideMeaning } from "./server/visual-relevance.mjs";
 import { imageBrief } from "./server/image-brief.mjs";
 import { extractText, importDeck, importSheets } from "./server/extract.mjs";
+import { exportPptx } from "./server/pptx.mjs";
 import { varietyIssues } from "./public/layout-looks.mjs";
 import { createRooms } from "./server/rooms.mjs";
 import { buildTranslatePrompt, checkTranslation, translateRequestSchema, translateResultSchema } from "./server/translate.mjs";
@@ -119,6 +120,8 @@ function loadStatic() {
   const inject = (text) => text.replaceAll("__APP_VERSION__", APP_VERSION).replaceAll("__APP_BUILD__", build);
   add("/", inject(readFileSync(join(PUBLIC, "index.html"), "utf8")), TYPES[".html"]);
   add("/app.js", inject(readFileSync(join(PUBLIC, "app.js"), "utf8")), TYPES[".js"]);
+  // The page the server's headless browser draws slides on to write a PowerPoint (server/pptx.mjs).
+  add("/export.html", inject(readFileSync(join(PUBLIC, "export.html"), "utf8")), TYPES[".html"]);
   add("/reset-actions.mjs", readFileSync(join(PUBLIC, "reset-actions.mjs"), "utf8"), TYPES[".js"]);
   add("/saved-library.js", readFileSync(join(PUBLIC, "saved-library.js"), "utf8"), TYPES[".js"]);
   add("/auto-images.mjs", readFileSync(join(PUBLIC, "auto-images.mjs"), "utf8"), TYPES[".js"]);
@@ -698,6 +701,26 @@ const httpServer = createServer(async (req, res) => {
       } catch { /* ignore malformed reports */ }
     }
     return res.writeHead(204).end();
+  }
+
+  // PowerPoint への書き出し: the deck (media inside, as the HTML export carries it) → an editable .pptx.
+  if (url.pathname === "/api/export/pptx" && req.method === "POST") {
+    try {
+      const body = await readJson(req, 200_000_000);
+      if (!body?.deck || !Array.isArray(body.deck.slides) || !body.deck.slides.length) return json(res, 400, { error: "書き出す資料がありません。" });
+      const { bytes, stats } = await exportPptx(body.deck, { base: `http://127.0.0.1:${PORT}`, rootDir: here });
+      const name = encodeURIComponent(`${String(body.deck.title || "資料").replace(/[\\/:*?"<>|]/g, "_").slice(0, 80)}.pptx`);
+      res.writeHead(200, {
+        "content-type": "application/vnd.openxmlformats-officedocument.presentationml.presentation",
+        "content-disposition": `attachment; filename*=UTF-8''${name}`,
+        "content-length": bytes.length,
+        "x-export-stats": JSON.stringify(stats),
+        "cache-control": "no-store",
+      });
+      return res.end(bytes);
+    } catch (error) {
+      return json(res, 422, { error: error.message });
+    }
   }
 
   if (url.pathname === "/api/import" && req.method === "POST") {

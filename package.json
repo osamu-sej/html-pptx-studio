@@ -1,6 +1,6 @@
 {
   "name": "html-pptx-studio",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "type": "module",
   "description": "AI-built slide decks as moving HTML presentations that carry over to PowerPoint: outline, edit like PowerPoint, talk to the AI, present, and export to HTML or an editable .pptx.",
@@ -37,6 +37,7 @@
     "qa:live": "node qa/studio-live.mjs",
     "qa:tools": "node qa/studio-tools.mjs",
     "qa:all": "node qa/run.mjs",
+    "qa:pptx": "node qa/studio-pptx.mjs",
     "qa:fidelity": "node qa/fidelity.mjs",
     "qa:layouts": "node qa/shoot.mjs --themes=clarity,midnight,editorial,mono,forest,sunset,aurora,kinari --deck=/qa/all-layouts.json --per=8"
   },
@@ -46,6 +47,7 @@
   "dependencies": {
     "@openai/codex": "0.144.1",
     "lottie-web": "5.13.0",
+    "playwright-core": "1.56.1",
     "polygon-clipping": "^0.15.7",
     "qrcode-generator": "2.0.4",
     "three": "0.186.1",

@@ -78,6 +78,8 @@ await step("挿入 → アンケート: a question and choices (one per line), e
   await page.click(".poll-dialog .pl-ok");
   const [poll] = (await objects()).filter((o) => o.kind === "poll");
   assert(poll && poll.question === "来期はどこから始めますか？" && poll.options.join("|") === "店舗から|本部から|同時に", `poll: ${JSON.stringify(poll)}`);
+  // The stage draws the new poll a moment after the deck has it: wait for it before reading where it is.
+  await page.waitForSelector(`#stageBody .hs-obj[data-el="${poll.id}"]`);
   const b = await page.locator(`#stageBody .hs-obj[data-el="${poll.id}"]`).boundingBox();
   await page.mouse.dblclick(b.x + b.width / 2, b.y + b.height / 2);
   await page.waitForSelector(".poll-dialog[open]");

@@ -357,10 +357,15 @@ export function createConverter(app) {
   }
 
   /** The slide at `index` as objects and animations: { objects, timeline, slide } (the converted slide). */
-  async function convert(index) {
+  /**
+   * `chrome`: also read what the studio draws around the layout (the title, the key message and the line above them,
+   * the foot with the source and the page number) as text boxes — for a PowerPoint, where nothing redraws them.
+   */
+  async function convert(index, { chrome = false, any = false } = {}) {
     const deck = app.deck();
     const slide = deck?.slides[index];
-    const why = refusal(slide);
+    // `any`: the pages the editor keeps as layouts (a cover, a chapter…) are read too (a PowerPoint has no layouts to keep).
+    const why = any && slide && slide.type !== "blank" ? null : refusal(slide);
     if (why) throw new Error(why);
     const takeover = Boolean(E.timelineTakesLayout?.(slide));
     const build = takeover ? "none" : E.BUILDS.includes(slide.animation) && slide.animation !== "auto" ? slide.animation : E.recommendedBuild(slide.type);
@@ -380,7 +385,7 @@ export function createConverter(app) {
       await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
       if (!opts.fit) E.fit(el);
       materializePseudos(el);
-      const reader = createReader(el, { slide, deck, opts });
+      const reader = createReader(el, { slide, deck, opts, chrome });
       const atoms = reader.read();
       const { objects, groups } = finish(atoms, slide, deck, index);
       const timeline = buildTimeline({ build, entrance, groups, timeline: slide.timeline });
@@ -427,6 +432,8 @@ export function createConverter(app) {
   /** The theme's colour when what was read is (nearly) one of them, else the colour as it was drawn. */
   const near = (c, palette, opts) => {
     if (!c) return null;
+    // A see-through colour lies over whatever is under it (not only the white page): kept as it is, with its opacity.
+    if (c.a < 0.98) return exact(c);
     const snap = snapToPalette(c, palette, opts);
     return snap && snap.err <= NEAR ? snap : exact(c);
   };
@@ -439,10 +446,41 @@ export function createConverter(app) {
   }
   const lineOf = (c) => near(c, lines(), { fade: false })?.color ?? null;
   const inkOf = (c) => near(c, inks(), { fade: false })?.color ?? E.OBJECT_DEFAULTS.text.color;
-  const highlightOf = (c) => near(c, highlights(), { fade: false })?.color ?? null;
+  // A marker is see-through (the accent at a sixth): it is the colour it shows over the white page.
+  const highlightOf = (c) => {
+    if (!c) return null;
+    const [r, g, b] = overWhite(c).map((v) => Math.round(v));
+    return near({ r, g, b, a: 1 }, highlights(), { fade: false })?.color ?? null;
+  };
 
   /** Everything the slide shows (its frame and placed media), in drawing order, as atoms { o, g, item, pair }. */
-  function createReader(slideEl, { slide, opts }) {
+  /**
+   * The title, the key message and the foot of any slide (a 白紙 page too) as text boxes, read from the slide as drawn
+   * (for a PowerPoint, where nothing redraws them). [] when the slide draws none.
+   */
+  async function chromeObjects(index) {
+    const deck = app.deck();
+    const slide = deck?.slides[index];
+    if (!slide) return [];
+    const opts = { ...app.renderOptions(), index, mode: "thumb", fit: app.fitFor?.(index) ?? undefined };
+    const el = E.render({ ...slide, elements: undefined }, opts);
+    const host = document.createElement("div");
+    host.setAttribute("aria-hidden", "true");
+    host.style.cssText = "position:fixed;left:-30000px;top:0;width:1920px;height:1080px;overflow:hidden;pointer-events:none;contain:layout style;";
+    host.append(el);
+    document.body.append(host);
+    try {
+      await document.fonts?.ready;
+      await new Promise((resolve) => requestAnimationFrame(() => requestAnimationFrame(resolve)));
+      if (!opts.fit) E.fit(el);
+      const atoms = createReader(el, { slide, deck, opts, chrome: true, only: true }).read();
+      return atoms.map((atom) => E.normalizeObject(atom.o)).filter(Boolean);
+    } finally {
+      host.remove();
+    }
+  }
+
+  function createReader(slideEl, { slide, opts, chrome = false, only = false }) {
     const origin = slideEl.getBoundingClientRect();
     const atoms = [];
     let pairs = 0;
@@ -731,16 +769,24 @@ export function createConverter(app) {
         if (/center/.test(across)) align = "center"; else if (/(flex-)?end|right/.test(across)) align = "right";
         if (/center/.test(down)) valign = "middle"; else if (/(flex-)?end/.test(down)) valign = "bottom";
       } else if (cs.display === "table-cell") valign = cs.verticalAlign === "middle" ? "middle" : cs.verticalAlign === "bottom" ? "bottom" : "top";
-      const color = parseColor(cs.webkitTextFillColor) || parseColor(cs.color);
+      // Letters drawn as outlines only (a transparent fill and a stroke): the stroke is their outline.
+      const strokeW = parseFloat(cs.webkitTextStrokeWidth) || 0;
+      const hollow = strokeW > 0 && /^(transparent|rgba\([^)]*,\s*0\))$/.test(cs.webkitTextFillColor || "");
+      const color = hollow ? parseColor(cs.webkitTextStrokeColor) || parseColor(cs.color) : parseColor(cs.webkitTextFillColor) || parseColor(cs.color);
       const family = cs.fontFamily || "";
-      const font = /^"?BIZ UDP/i.test(family) ? "ud" : /教科書|Kyokasho|Klee/i.test(family) ? "kyokasho" : undefined;
+      // The face the words are set in: the theme's heading font, its body font (the default), or a face of its own.
+      const first = family.split(",")[0].trim().replace(/^["']|["']$/g, "");
+      const theme = E.THEMES.find((t) => t.id === app.deck()?.theme);
+      const font = /^"?BIZ UDP/i.test(family) ? "ud" : /教科書|Kyokasho|Klee/i.test(family) ? "kyokasho" : first && first === theme?.officeFonts?.heading && first !== theme?.officeFonts?.body ? "heading" : undefined;
+      const face = !font && first && first !== theme?.officeFonts?.body && /^[\p{L}\p{N}\s._+-]{1,60}$/u.test(first) ? { fontFace: first } : {};
       const ls = cs.letterSpacing === "normal" ? 0 : parseFloat(cs.letterSpacing) / fs;
       const deco = cs.textDecorationLine || "";
       return {
         fs: r2(fs), color: inkOf(color), lh: r2(clamp(Number.isFinite(lh) ? lh : 1.3, 0.8, 4)), align, valign,
         ...(weightOf(cs) === 700 ? { bold: true } : {}), ...(cs.fontStyle === "italic" ? { italic: true } : {}),
         ...(deco.includes("underline") ? { underline: true } : {}), ...(deco.includes("line-through") ? { strike: true } : {}),
-        ...(font ? { font } : {}), ...(Math.abs(ls) > 0.004 ? { ls: r2(clamp(ls, -0.2, 1)) } : {}),
+        ...(font ? { font } : {}), ...face, ...(hollow ? { toutline: { w: r2(clamp(strokeW, 0.25, 24)), color: inkOf(color) }, hollow: true } : {}),
+        ...(Math.abs(ls) > 0.004 ? { ls: r2(clamp(ls, -0.2, 1)) } : {}),
         ...(/nowrap|^pre$/.test(cs.whiteSpace) ? { wrap: false } : {}), ...(/^vertical/.test(cs.writingMode) ? { vertical: true } : {}),
       };
     }
@@ -828,7 +874,11 @@ export function createConverter(app) {
         const top = legend ? Math.min(rectOf(legend).y, drawn.y) : drawn.y;
         rect = { x: drawn.x, y: top, w: drawn.w, h: drawn.y + drawn.h - top };
       }
-      return { kind: "chart", x: r2(rect.x), y: r2(rect.y), w: r2(rect.w), h: r2(rect.h), chart, ...opacityOf(opacity) };
+      // A chart of one series can colour its bars one by one (the one that matters in the accent): their colours as drawn.
+      const bars = model.series.length === 1 && svg ? [...svg.querySelectorAll(".hs-bar")] : [];
+      const paints = bars.length === model.labels.length ? bars.map((bar) => { const c = parseColor(getComputedStyle(bar).fill); return c ? hexOf({ r: Math.round(c.r), g: Math.round(c.g), b: Math.round(c.b) }) : null; }) : [];
+      const pointColors = paints.length && paints.every(Boolean) && new Set(paints).size > 1 ? { pointColors: paints } : {};
+      return { kind: "chart", x: r2(rect.x), y: r2(rect.y), w: r2(rect.w), h: r2(rect.h), chart, ...pointColors, ...opacityOf(opacity) };
     }
 
     function tableObject(table, opacity) {
@@ -936,6 +986,24 @@ export function createConverter(app) {
         const lone = strokeShows ? { ...stroke, stroke: faded.color } : stroke;
         const upright = Math.abs(m.b) < 1e-6 && Math.abs(m.c) < 1e-6;
         const tag = el.tagName;
+        // A circle stroked as one dash (a gauge's track and value): PowerPoint's 円弧, from where the dash starts
+        // (clockwise from three o'clock, as the circle is turned) for as far as it runs.
+        if (tag === "circle" && strokeShows && cs.strokeDasharray && cs.strokeDasharray !== "none") {
+          const dashes = cs.strokeDasharray.split(/[\s,]+/).map(parseFloat).filter(Number.isFinite);
+          const r = el.r.baseVal.value;
+          const circ = 2 * Math.PI * r;
+          if (dashes.length === 2 && dashes[0] > 0 && dashes[0] < circ * 0.999 && dashes[1] >= circ - dashes[0] - 1) {
+            const offset = parseFloat(cs.strokeDashoffset) || 0;
+            const turn = (Math.atan2(m.b, m.a) * 180) / Math.PI;
+            const start = (((turn - (offset / circ) * 360) % 360) + 360) % 360;
+            const end = (start + (dashes[0] / circ) * 360) % 360;
+            const [cx, cy] = toSlide(m, [el.cx.baseVal.value, el.cy.baseVal.value]);
+            const R = r * scale;
+            const cap = cs.strokeLinecap === "round" ? { cap: "round" } : {};
+            add({ kind: "shape", shape: "arc", adj: [Math.round(start * 100) / 100, Math.round(end * 100) / 100], x: r2(cx - R), y: r2(cy - R), w: r2(2 * R), h: r2(2 * R), fill: "none", ...lone, ...cap, dash: undefined, ...opacityOf(strokeAlpha < 0.99 ? strokeAlpha : 1) }, local);
+            continue;
+          }
+        }
         if (tag === "line") {
           if (!strokeShows) continue;
           const p1 = toSlide(m, [el.x1.baseVal.value, el.y1.baseVal.value]);
@@ -1053,7 +1121,7 @@ export function createConverter(app) {
     // ---- the walk
 
     function visit(el, ctx) {
-      if (el.nodeType !== 1 || el.matches(".hs-head, .hs-detail-badge, .hs-drill-badge, .hs-takeaway-row, script, style, template")) return;
+      if (el.nodeType !== 1 || el.matches(chrome ? ".hs-detail-badge, .hs-drill-badge, script, style, template" : ".hs-head, .hs-detail-badge, .hs-drill-badge, .hs-takeaway-row, script, style, template")) return;
       const cs = getComputedStyle(el);
       if (cs.display === "none") return;
       const opacity = ctx.opacity * Number(cs.opacity || 1);
@@ -1155,7 +1223,13 @@ export function createConverter(app) {
 
     function read() {
       const base = { g: null, item: null, opacity: 1 };
+      if (only) {
+        // The chrome alone: the header inside the frame, the foot and a vertical label on the slide.
+        for (const node of slideEl.querySelectorAll(":scope > .hs-frame > .hs-head, :scope > .hs-foot, :scope > .hs-vlabel")) visit(node, base);
+        return atoms;
+      }
       for (const part of slideEl.querySelectorAll(":scope > .hs-frame, :scope > .hs-overlay")) for (const child of part.children) visit(child, base);
+      if (chrome) for (const node of slideEl.querySelectorAll(":scope > .hs-foot, :scope > .hs-vlabel")) visit(node, base);
       return atoms;
     }
     return { read };
@@ -1173,6 +1247,9 @@ export function createConverter(app) {
     for (const atom of atoms) {
       const o = E.normalizeObject(atom.o);
       if (!o) continue;
+      // What only a PowerPoint export uses (the slide's object normalizer does not keep it).
+      if (atom.o.pointColors) o.pointColors = atom.o.pointColors;
+      if (atom.o.hollow) o.hollow = true;
       objects.push(o);
       if (atom.item && targets.has(atom.item) && o.kind !== "line") { if (!byItem.has(atom.item)) byItem.set(atom.item, []); byItem.get(atom.item).push(o); }
       if (atom.g != null) { if (!byG.has(atom.g)) byG.set(atom.g, []); byG.get(atom.g).push(o); }
@@ -1194,5 +1271,5 @@ export function createConverter(app) {
     return { objects, groups };
   }
 
-  return { convert, refusal };
+  return { convert, refusal, chromeObjects };
 }
