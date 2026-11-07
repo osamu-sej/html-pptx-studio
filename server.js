@@ -417,6 +417,18 @@ function slidesSource(slides, ...extra) {
 // Slides written per answer when a deck is written in parts.
 const DECK_PART = 4;
 
+/** What is wrong with slides written in a part of a deck (each slide against the slide schema), or "". */
+function slidesProblem(slides, { from }) {
+  const problems = [];
+  slides.forEach((slide, index) => {
+    const checked = aiSlideSchema.safeParse(omitNullObjectValues(slide));
+    if (checked.success) return;
+    const issue = checked.error.issues[0];
+    problems.push(`${from + index}枚目（${slide?.type ?? "type なし"}）の ${issue?.path?.join(".") || "全体"}：${issue?.message ?? "形式が違います"}`);
+  });
+  return problems.slice(0, 4).join("／");
+}
+
 function startDeckJob(session, input, prompt = buildDeckPrompt(input), source = deckSource(input), { variety = input.outline ? null : 0 } = {}) {
   const job = newJob("deck", session, input);
   let layoutsAsked = false;
@@ -430,6 +442,7 @@ function startDeckJob(session, input, prompt = buildDeckPrompt(input), source = 
     // From an outline, a long deck is written DECK_PART slides at a time from the start (one answer cannot hold
     // it all); otherwise only when an answer did not fit.
     ...(input.outline && total > DECK_PART ? { parts: { total, size: DECK_PART } } : { partsTotal: total }),
+    partCheck: slidesProblem,
     async finalize(candidate, attempt) {
       const deck = generatedDeckSchema.parse(omitNullObjectValues(candidate));
       const count = deck.slideData.length;

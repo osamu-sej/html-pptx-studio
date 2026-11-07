@@ -8,7 +8,9 @@ import readline from "node:readline";
 const script = JSON.parse(readFileSync(process.env.FAKE_CODEX_SCRIPT, "utf8"));
 const promptLog = process.env.FAKE_CODEX_PROMPTS;
 const prompts = [];
+const schemas = [];
 let turn = 0;
+let threads = 0;
 let login = 0;
 const cancelledLogins = new Set();
 
@@ -39,11 +41,13 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
     cancelledLogins.add(params.loginId);
     return send({ id, result: {} });
   }
-  if (method === "thread/start") return send({ id, result: { thread: { id: `thread-${Date.now()}` } } });
+  if (method === "thread/start") return send({ id, result: { thread: { id: `thread-${Date.now()}-${++threads}` } } });
   if (method === "turn/start") {
     const threadId = params.threadId;
     prompts.push(params.input?.[0]?.text ?? "");
     if (promptLog) writeFileSync(promptLog, JSON.stringify(prompts));
+    schemas.push({ thread: threadId, schema: Boolean(params.outputSchema), effort: params.effort ?? null });
+    if (promptLog) writeFileSync(`${promptLog}.turns`, JSON.stringify(schemas));
     let answer = script[Math.min(turn, script.length - 1)];
     turn += 1;
     send({ id, result: { turn: { id: `turn-${turn}` } } });
@@ -54,6 +58,11 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
         send({ method: "error", params: { threadId, turnId: `turn-${turn}`, willRetry: false, error: answer.__fail } });
         send({ method: "turn/completed", params: { threadId, turn: { id: `turn-${turn}`, status: "failed", error: answer.__fail } } });
       }, 20);
+      return;
+    }
+    // { "__cutoff": true } is an answer cut off at the output limit that Codex keeps sending again (it never ends).
+    if (answer?.__cutoff) {
+      setTimeout(() => send({ method: "error", params: { threadId, turnId: `turn-${turn}`, willRetry: true, error: { message: "stream disconnected before completion: Incomplete response returned, reason: max_output_tokens", codexErrorInfo: { responseStreamDisconnected: { httpStatusCode: null } } } } }), 20);
       return;
     }
     if (answer?.__hiccup) {
@@ -79,7 +88,8 @@ readline.createInterface({ input: process.stdin }).on("line", (line) => {
       }, 30);
       return;
     }
-    const text = JSON.stringify(answer);
+    // { "__raw": text } answers with that text as it is.
+    const text = typeof answer?.__raw === "string" ? answer.__raw : JSON.stringify(answer);
     // FAKE_CODEX_STREAM=ms streams the answer in pieces, like the real app server.
     const every = Number(process.env.FAKE_CODEX_STREAM || 0);
     const pieces = every ? text.match(/[\s\S]{1,400}/g) : [];
