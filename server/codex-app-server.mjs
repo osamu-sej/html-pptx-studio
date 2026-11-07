@@ -15,6 +15,29 @@ const ICONS = Object.fromEntries(Object.entries(JSON.parse(readFileSync(new URL(
 const TRANSIENT_ERRORS = new Set(["serverOverloaded", "internalServerError", "httpConnectionFailed", "responseStreamConnectionFailed",
   "responseStreamDisconnected", "responseTooManyFailedAttempts"]);
 
+/** The slides the next part of a deck written in parts covers: [from, to] (1-based). */
+function partRange(job) {
+  const from = job.parts.done.length + 1;
+  return [from, Math.min(job.parts.total, from + job.parts.size - 1)];
+}
+
+/** What to ask for the next part of a deck written in parts (the first comes after the whole request). */
+export function partPrompt(job, { first = false, note = "" } = {}) {
+  const { total, size } = job.parts;
+  const [from, to] = partRange(job);
+  const last = to === total ? "最後のスライドは type を closing にする。" : "";
+  if (first) {
+    return [job.basePrompt, "", "# 書き方（何回かに分けて返す）",
+      `資料全体は${total}枚（枚数の指示は資料全体の枚数）。1回の回答に入りきらないので、${size}枚ずつ何回かに分けて書く。`,
+      `今回は全${total}枚のうち${from}〜${to}枚目だけを slideData に入れて返す（slideData 以外の項目もいつもどおり入れる）。続きはこのあと頼む。${last}`].join("\n");
+  }
+  return [note, `続けて、全${total}枚のうち${from}〜${to}枚目だけを slideData に入れて返す（slideData 以外の項目は前と同じでよい）。`,
+    `これまでに書いたスライドと話の流れ・用語・数値をそろえ、書いたスライドは繰り返さない。${last}`].filter(Boolean).join("\n");
+}
+
+/** Codex stopped because the answer did not fit (the model's output limit). */
+const tooLong = (error) => /max_output_tokens/i.test(`${error?.message ?? ""} ${JSON.stringify(error?.codexErrorInfo ?? "")}`);
+
 function errorKind(error) {
   const info = error?.codexErrorInfo;
   return typeof info === "string" ? info : info && typeof info === "object" ? Object.keys(info)[0] : "";
@@ -743,12 +766,15 @@ export class CodexSlideServer extends EventEmitter {
    * `finalize(parsed, attempt)` returns { result, detail } to finish, or
    * { retry: prompt, detail, fallback? } to ask Codex for a corrected answer.
    */
-  async runJob(job, { prompt, outputSchema, finalize, maxAttempts = 2, effort = "medium", codex = job.useCodex !== false }) {
-    job.plan = { outputSchema, finalize, maxAttempts, effort };
+  async runJob(job, { prompt, outputSchema, finalize, maxAttempts = 2, effort = "medium", codex = job.useCodex !== false, parts = null, partsTotal = null }) {
+    job.plan = { outputSchema, finalize, maxAttempts, effort, partsTotal: parts?.total ?? partsTotal };
     job.attempt = 1;
-    job.initialPrompt = prompt;
     job.provider = "codex";
     this.jobs.set(job.id, job);
+    job.basePrompt = prompt;
+    // A long deck is written a few slides at a time (one answer cannot hold it all): see #handleAnswer.
+    if (parts && parts.total > parts.size) job.parts = { total: parts.total, size: parts.size, done: [], meta: null, retries: 0 };
+    job.initialPrompt = job.parts ? partPrompt(job, { first: true }) : prompt;
     // Not connected to Codex: go straight to the stand-by AI (the caller checked it is there).
     if (!codex) return this.#fallBack(job, "Codexに接続していません。");
     try {
@@ -759,7 +785,7 @@ export class CodexSlideServer extends EventEmitter {
       if (!threadId) throw new Error("Codex did not return a thread id");
       job.threadId = threadId;
       this.threadJobs.set(threadId, job.id);
-      await this.#startTurn(job, prompt);
+      await this.#startTurn(job, job.initialPrompt);
     } catch (error) {
       await this.#fallBack(job, error instanceof Error ? error.message : String(error));
     }
@@ -812,7 +838,8 @@ export class CodexSlideServer extends EventEmitter {
     job.attempt = 1;
     job.lastGood = null;
     job.localModel = local.model;
-    job.localMessages = [{ role: "user", content: job.initialPrompt }];
+    if (job.parts) { job.parts.done = []; job.parts.meta = null; job.parts.complete = false; job.parts.retries = 0; }
+    job.localMessages = [{ role: "user", content: job.parts ? partPrompt(job, { first: true }) : job.initialPrompt }];
     await this.#localTurn(job);
   }
 
@@ -952,9 +979,9 @@ export class CodexSlideServer extends EventEmitter {
           job.lastProgressAt = Date.now();
           // First drafts stream slide by slide, so the page can show each one as it is written.
           const streamed = [...job.messageParts.values()].join("");
-          const partial = job.kind === "deck" && job.attempt === 1 ? partialItems(streamed) : null;
+          const partial = job.kind === "deck" && job.attempt === 1 ? [...(job.parts?.done || []), ...partialItems(streamed)] : null;
           const reply = job.kind === "chat" && job.attempt === 1 ? partialString(streamed, "reply") : "";
-          const detail = partial?.length ? `${partial.length}枚目まで書き上がりました。` : reply ? "返事を書いています。" : `${received.toLocaleString("ja-JP")}文字を受信しました。`;
+          const detail = partial?.length ? `${partial.length}枚目まで書き上がりました${job.parts ? `（全${job.parts.total}枚）` : ""}。` : reply ? "返事を書いています。" : `${received.toLocaleString("ja-JP")}文字を受信しました。`;
           this.#updateJob(job, { stage: job.attempt > 1 ? "自動修正中" : "構成を書き出し中", detail, progress: received, ...(partial ? { partial } : {}), ...(reply ? { partialReply: reply } : {}) });
         }
         break;
@@ -989,6 +1016,16 @@ export class CodexSlideServer extends EventEmitter {
   /** A turn that failed: once per job, a transient failure (overload, dropped stream) is simply asked again. */
   #failTurn(job, error, status = "failed") {
     clearTimeout(job.errorTimer);
+    // The deck did not fit in one answer: write it a few slides at a time (fewer still if a part did not fit).
+    if (job.kind === "deck" && tooLong(error) && job.plan.partsTotal > 2 && (!job.parts || job.parts.size > 2) && !job.splitTried?.[job.parts?.size ?? 0]) {
+      job.splitTried = { ...(job.splitTried || {}), [job.parts?.size ?? 0]: true };
+      if (job.parts) job.parts.size = 2;
+      else job.parts = { total: job.plan.partsTotal, size: Math.min(4, Math.ceil(job.plan.partsTotal / 2)), done: [], meta: null, retries: 0 };
+      const prompt = job.parts.done.length ? partPrompt(job, { note: "前の回答は長すぎて途中で切れました。" }) : partPrompt(job, { first: true });
+      this.#updateJob(job, { stage: "分けて作成中", detail: `1回の回答に入りきらなかったため、${job.parts.size}枚ずつに分けて書いています。` });
+      this.#startTurn(job, prompt).catch((retryError) => this.failJob(job.id, retryError));
+      return;
+    }
     if (TRANSIENT_ERRORS.has(errorKind(error)) && !job.transientRetried && job.lastPrompt) {
       job.transientRetried = true;
       this.#updateJob(job, { stage: "再試行中", detail: "Codex側が混み合っているため、もう一度依頼しています。" });
@@ -1039,6 +1076,34 @@ export class CodexSlideServer extends EventEmitter {
 
   /** Check an answer (from Codex or the stand-by AI); `next(prompt)` asks the same AI again. */
   async #handleAnswer(job, text, next) {
+    if (job.parts && !job.parts.complete) {
+      const [from, to] = partRange(job);
+      let part = null;
+      try { part = parseDeckResult(text); } catch { /* asked again below */ }
+      let slides = Array.isArray(part?.slideData) ? part.slideData : [];
+      // The whole deck (or more than asked): keep the slides of this part.
+      if (slides.length > to - from + 1) slides = slides.length >= to ? slides.slice(from - 1, to) : slides.slice(0, to - from + 1);
+      if (!slides.length) {
+        if (job.parts.retries < 2) {
+          job.parts.retries += 1;
+          await next(partPrompt(job, { note: "前の回答から slideData を読み取れませんでした。JSON だけを返してください。" }));
+          return;
+        }
+        this.#updateJob(job, { status: "failed", stage: "生成失敗", detail: `${from}〜${to}枚目を作れませんでした。`, error: `${from}〜${to}枚目を作れませんでした。`, rawOutput: text });
+        return;
+      }
+      job.parts.meta ??= part;
+      job.parts.done.push(...slides);
+      if (job.parts.done.length < job.parts.total) {
+        this.#updateJob(job, { stage: "構成を書き出し中", detail: `全${job.parts.total}枚のうち${job.parts.done.length}枚を書き上げました。`, partial: [...job.parts.done] });
+        await next(partPrompt(job));
+        return;
+      }
+      job.parts.complete = true;
+      text = JSON.stringify({ ...job.parts.meta, slideData: job.parts.done.slice(0, job.parts.total) });
+      // A repair asks for the whole deck again, which is what did not fit: what the check finds is kept as 要確認.
+      job.plan.maxAttempts = job.attempt;
+    }
     const canRetry = job.attempt < job.plan.maxAttempts;
     const who = job.provider === "local" ? `予備AI（${job.localModel}）` : "Codex";
     let outcome;

@@ -414,13 +414,22 @@ function slidesSource(slides, ...extra) {
  * other layouts: 0 for a deck written from scratch, the current count when rewriting a deck, and null
  * (never ask) when the layouts come from an outline the user agreed to.
  */
+// Slides written per answer when a deck is written in parts.
+const DECK_PART = 4;
+
 function startDeckJob(session, input, prompt = buildDeckPrompt(input), source = deckSource(input), { variety = input.outline ? null : 0 } = {}) {
   const job = newJob("deck", session, input);
   let layoutsAsked = false;
+  // How many slides the deck will have (an outline fixes it; a range is met in the middle when it must be split).
+  const { minCount, maxCount, slideCount } = input.settings;
+  const total = input.outline?.length || (minCount ? Math.round((minCount + maxCount) / 2) : slideCount) || 0;
   codex.runJob(job, {
     prompt,
     outputSchema: codexDeckSchema,
     maxAttempts: 3,
+    // From an outline, a long deck is written DECK_PART slides at a time from the start (one answer cannot hold
+    // it all); otherwise only when an answer did not fit.
+    ...(input.outline && total > DECK_PART ? { parts: { total, size: DECK_PART } } : { partsTotal: total }),
     async finalize(candidate, attempt) {
       const deck = generatedDeckSchema.parse(omitNullObjectValues(candidate));
       const count = deck.slideData.length;
