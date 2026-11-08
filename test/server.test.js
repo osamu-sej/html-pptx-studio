@@ -3,7 +3,7 @@ import { isShowpiece } from "../server/showpieces.mjs";
 import { spawn } from "node:child_process";
 import { once } from "node:events";
 import { createServer } from "node:http";
-import { existsSync } from "node:fs";
+import { existsSync, readFileSync } from "node:fs";
 import { mkdtemp, readFile, rm, writeFile } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
@@ -865,6 +865,24 @@ test("an existing PowerPoint is imported into an editable deck and its text can 
   } finally {
     await server.stop();
   }
+});
+
+test("on a small machine the PowerPoint export first stops the idle Codex app server; the next AI job starts it again", async () => {
+  const exits = join(await mkdtemp(join(tmpdir(), "fake-codex-exits-")), "exits.log");
+  const deck = shortDeck(4);
+  await withFakeCodex([deck, deck], async (server) => {
+    const first = await waitForJob(server, (await (await server.postJson("/api/decks", { brief: "テスト", settings: { slideCount: 4, textDensity: "standard" } })).json()).jobId);
+    assert.equal(first.status, "completed", first.error);
+    const started = await server.postJson("/api/export/pptx/jobs", { deck: { title: "QA", theme: "clarity", slides: deck.slideData } });
+    assert.equal(started.status, 202);
+    for (let i = 0; i < 100 && !existsSync(exits); i += 1) await new Promise((resolve) => setTimeout(resolve, 100));
+    assert.match(readFileSync(exits, "utf8"), /stopped/, "the idle app server was stopped");
+    // Codex is still there for the next request.
+    const status = await (await server.request("/api/codex/status")).json();
+    assert.equal(status.authorized, true);
+    const second = await waitForJob(server, (await (await server.postJson("/api/decks", { brief: "テスト", settings: { slideCount: 4, textDensity: "standard" } })).json()).jobId);
+    assert.equal(second.status, "completed", second.error);
+  }, { PPTX_LEAN: "1", FAKE_CODEX_EXITS: exits });
 });
 
 test("PowerPoint 出力 as a job: only its owner sees it, an empty deck is refused, a stop needs the same origin", async () => {

@@ -15,6 +15,11 @@ let login = 0;
 const cancelledLogins = new Set();
 
 const send = (message) => process.stdout.write(`${JSON.stringify(message)}\n`);
+// FAKE_CODEX_EXITS: a file that gets a line each time the app server is stopped (SIGTERM).
+process.on("SIGTERM", () => {
+  if (process.env.FAKE_CODEX_EXITS) writeFileSync(process.env.FAKE_CODEX_EXITS, "stopped\n", { flag: "a" });
+  process.exit(0);
+});
 
 readline.createInterface({ input: process.stdin }).on("line", (line) => {
   const message = JSON.parse(line);

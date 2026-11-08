@@ -77,12 +77,25 @@ export function leanMachine() {
 let browserPromise = null;
 async function browser(lean = false) {
   if (!browserPromise) {
+    // A small machine starts the browser slowly (minutes when memory is short): wait longer than Playwright's 3.
     // On a small machine: one renderer, no GPU process, less JavaScript memory.
     const small = lean ? ["--disable-gpu", "--renderer-process-limit=1", "--disable-features=site-per-process,Translate,MediaRouter,OptimizationHints", "--disable-extensions", "--mute-audio", "--js-flags=--max-old-space-size=384"] : [];
-    browserPromise = playwright().chromium.launch({ executablePath: chromePath(), args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none", ...small] });
+    browserPromise = playwright().chromium.launch({ executablePath: chromePath(), timeout: lean ? 300_000 : 180_000, args: ["--no-sandbox", "--disable-dev-shm-usage", "--font-render-hinting=none", ...small] });
     browserPromise.then((b) => b.on("disconnected", () => { browserPromise = null; })).catch(() => { browserPromise = null; });
   }
   return browserPromise;
+}
+
+/** The memory the container uses now (cgroup), and this process's, for the log. */
+function memoryInUse() {
+  const mb = (n) => `${Math.round(n / 1024 ** 2)}MB`;
+  let container = null;
+  for (const path of ["/sys/fs/cgroup/memory.current", "/sys/fs/cgroup/memory/memory.usage_in_bytes"]) {
+    const v = readNumber(path);
+    if (v && /^\d+$/.test(v[0])) { container = Number(v[0]); break; }
+  }
+  const { cpus, memory } = machine();
+  return `${container != null ? `${mb(container)} of ${mb(memory)}` : "?"}, server ${mb(process.memoryUsage().rss)}, ${Math.round(cpus * 100) / 100} CPU`;
 }
 
 /** Close the browser (after an export on a small machine, or to stop one that hangs). */
@@ -225,6 +238,7 @@ async function recordClip(page, i, id, background, check = () => {}) {
  * `base` is this server's own address (the headless browser loads the export page from it).
  */
 export async function collectModel(deck, { base, timeoutMs = 240_000, lean = leanMachine(), film = !lean || process.env.PPTX_FILM === "1", progress = () => {}, signal = null }) {
+  progress({ stage: "ブラウザを起動しています" });
   const b = await browser(lean);
   // Pictures at 2x read sharper in PowerPoint; a small machine draws them at 1x (a quarter of the memory and time).
   const context = await b.newContext({ viewport: { width: 1920, height: 1080 }, deviceScaleFactor: lean ? 1 : 2 });
@@ -340,10 +354,16 @@ const DEADLINE_MS = Number(process.env.PPTX_DEADLINE_MS) || 15 * 60_000;
  * A deck (as the HTML export carries it: media inside) → { bytes, stats } of its .pptx. `progress({ stage, done,
  * total })` follows it; `signal` stops it. Exports run one at a time; one that runs past DEADLINE_MS is stopped.
  */
-export function exportPptx(deck, { base, rootDir, progress = () => {}, signal = null }) {
+export function exportPptx(deck, { base, rootDir, progress = () => {}, signal = null, prepare = null }) {
   return serially(async () => {
     if (signal?.aborted) throw new Stopped(String(signal.reason || "取り消しました。"));
     const lean = leanMachine();
+    // A small machine first gives back what it can spare (the AI's memory when no AI job is running).
+    if (lean && prepare) {
+      progress({ stage: "メモリを空けています" });
+      await Promise.resolve(prepare()).catch(() => {});
+    }
+    console.log(`pptx export: starting (${deck.slides.length} slides${lean ? ", small machine" : ""}; memory in use ${memoryInUse()})`);
     const local = new AbortController();
     const stop = (reason) => { if (!local.signal.aborted) local.abort(reason); };
     // Stopped from outside (a newer export): close the browser too, so a page that hangs lets go at once.
@@ -378,14 +398,14 @@ export function exportPptx(deck, { base, rootDir, progress = () => {}, signal = 
 const exportJobs = new Map();
 
 /** Start an export for `owner` (a session): its earlier export, still waiting or running, is stopped first. */
-export function startExportJob(deck, { owner, base, rootDir }) {
+export function startExportJob(deck, { owner, base, rootDir, prepare = null }) {
   for (const job of exportJobs.values()) {
     if (job.owner === owner && !job.finished) job.controller.abort("新しい書き出しを始めたため、前の書き出しを止めました。");
   }
   const job = { id: randomUUID(), owner, status: "queued", stage: "順番を待っています", done: 0, total: deck.slides.length, finished: false, controller: new AbortController(), startedAt: Date.now(), title: deck.title };
   exportJobs.set(job.id, job);
   const update = (patch) => Object.assign(job, patch, { status: "running", updatedAt: Date.now() });
-  exportPptx(deck, { base, rootDir, signal: job.controller.signal, progress: update })
+  exportPptx(deck, { base, rootDir, signal: job.controller.signal, progress: update, prepare })
     .then(({ bytes, stats }) => Object.assign(job, { status: "completed", stage: "完了", bytes, stats, finished: true }))
     .catch((error) => Object.assign(job, { status: error instanceof Stopped ? "stopped" : "failed", error: error.message, finished: true }))
     .finally(() => {
