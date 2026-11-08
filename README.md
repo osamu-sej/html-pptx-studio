@@ -71,6 +71,8 @@ npm start
 
 手元で [Ollama](https://ollama.com/) の `gemma4:12b` が動いていれば、Codexが使えないとき（利用上限・接続切れ）に自動で予備AIとして使います。
 
+Mac mini で動かし、外出先の Windows から自分だけで使う場合は、[Mac mini と Tailscale の設定](docs/mac-mini-tailscale.md)を参照してください。
+
 ### 最新版にする
 
 ```bash
