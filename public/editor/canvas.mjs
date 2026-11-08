@@ -452,10 +452,13 @@ export function createCanvas(app) {
     ed.drag = { ...drag, pointer: event.pointerId, moved: false, client: [event.clientX, event.clientY], startSel: [...ed.sel] };
     // A press on the background may be a plain click on the slide (a title to edit, a drill badge): the
     // pointer is only captured once it really drags, so that click still reaches what is under it.
-    if (!drag.quiet) { event.preventDefault(); capture(event); } else window.addEventListener("pointerup", onPointerUp, { once: true });
-    ed.wrap.addEventListener("pointermove", onPointerMove);
-    ed.wrap.addEventListener("pointerup", onPointerUp);
-    ed.wrap.addEventListener("pointercancel", onPointerUp);
+    if (!drag.quiet) { event.preventDefault(); capture(event); }
+    // The window follows the drag, not the stage: the studio may draw the slide again while the button is down
+    // (a new wrap replaces the old one, as on a slow machine right after an object was placed), and the drag
+    // must still end where the button comes up.
+    window.addEventListener("pointermove", onPointerMove);
+    window.addEventListener("pointerup", onPointerUp);
+    window.addEventListener("pointercancel", onPointerUp);
   }
 
   function capture(event) { try { ed.wrap.setPointerCapture(event.pointerId); } catch { /* gone */ } }
@@ -486,9 +489,9 @@ export function createCanvas(app) {
   function onPointerUp(event) {
     const drag = ed.drag;
     ed.drag = null;
-    ed.wrap?.removeEventListener("pointermove", onPointerMove);
-    ed.wrap?.removeEventListener("pointerup", onPointerUp);
-    ed.wrap?.removeEventListener("pointercancel", onPointerUp);
+    window.removeEventListener("pointermove", onPointerMove);
+    window.removeEventListener("pointerup", onPointerUp);
+    window.removeEventListener("pointercancel", onPointerUp);
     if (!drag) return;
     if (drag.moved) ed.suppressClick = true;
     if (drag.type === "draw") { finishDraw(drag, toSlide(event), event); return; }

@@ -692,7 +692,8 @@ export class CodexSlideServer extends EventEmitter {
         }
         this.proc = null;
         this.readyPromise = null;
-        if (!this.closing) this.emit("exit", error);
+        if (!this.closing && !this.resting) this.emit("exit", error);
+        this.resting = false;
       });
 
       const lines = readline.createInterface({ input: proc.stdout });
@@ -784,6 +785,24 @@ export class CodexSlideServer extends EventEmitter {
   close() {
     this.closing = true;
     if (this.proc && !this.proc.killed) this.proc.kill("SIGTERM");
+  }
+
+  /**
+   * Stop the app server while nothing needs it, to give its memory back (it keeps every thread it ran, a few
+   * hundred MB after a deck, which a 512 MB machine needs for the PowerPoint export's browser). The next AI
+   * request starts it again; the login stays in CODEX_HOME. Returns whether it stopped.
+   */
+  async rest() {
+    const proc = this.proc;
+    if (!proc || proc.killed) return false;
+    const busy = [...this.jobs.values()].some((job) => !["completed", "failed"].includes(job.status) && job.provider !== "local");
+    if (busy || this.loginSessions.size || this.pending.size) return false;
+    this.resting = true;
+    const exited = new Promise((resolve) => { proc.once("exit", resolve); setTimeout(resolve, 5000).unref?.(); });
+    proc.kill("SIGTERM");
+    await exited;
+    if (this.proc === proc && !proc.killed) proc.kill("SIGKILL");
+    return true;
   }
 
   /**

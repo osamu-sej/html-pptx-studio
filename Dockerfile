@@ -14,7 +14,7 @@ RUN npm ci --omit=dev
 # Should the download fail, the system's chromium above is used (server/pptx.mjs chromePath).
 ENV PLAYWRIGHT_BROWSERS_PATH=/ms-playwright
 RUN (npx playwright-core install chromium-headless-shell \
-  && ln -sf "$(ls -d /ms-playwright/chromium_headless_shell-*/*/chrome-headless-shell | head -1)" /usr/local/bin/chrome-headless-shell \
+  && ln -sf "$(find /ms-playwright -maxdepth 3 -type f \( -name chrome-headless-shell -o -name headless_shell \) | head -1)" /usr/local/bin/chrome-headless-shell \
   && /usr/local/bin/chrome-headless-shell --version) || echo "chrome-headless-shell not installed: the export uses chromium"
 
 COPY tools/requirements.txt ./tools/requirements.txt

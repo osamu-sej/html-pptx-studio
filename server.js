@@ -734,7 +734,10 @@ const httpServer = createServer(async (req, res) => {
     try {
       const body = await readJson(req, 200_000_000);
       if (!body?.deck || !Array.isArray(body.deck.slides) || !body.deck.slides.length) return json(res, 400, { error: "書き出す資料がありません。" });
-      const job = startExportJob(body.deck, { owner: session.id, base: `http://127.0.0.1:${PORT}`, rootDir: here });
+      // On a small machine the AI's app server is stopped first while idle (it holds hundreds of MB after a deck).
+      const job = startExportJob(body.deck, { owner: session.id, base: `http://127.0.0.1:${PORT}`, rootDir: here, prepare: async () => {
+        if (await codex.rest()) console.log("pptx export: stopped the idle Codex app server to free memory");
+      } });
       return json(res, 202, publicExportJob(job));
     } catch (error) {
       return json(res, 422, { error: error.message });
