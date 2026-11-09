@@ -38,7 +38,10 @@ EMPHASIS_IDS = {"fillColor": 1, "fontColor": 3, "growShrink": 6, "lineColor": 7,
 # What only HTML draws → the nearest PowerPoint effect (until the part is recorded as a video).
 NEAREST_IN = {"layoutSpin": ("swivel", {"dir": "h"}), "layoutSwirl": ("pinwheel", {}),
               "layoutFlip": ("swivel", {"dir": "v"}),
+              "layoutBlur": ("fade", {}), "layoutZoom": ("zoom", {"dir": "in"}),
               "kineticZoom": ("zoom", {"dir": "in"}), "kineticFlip": ("swivel", {"dir": "h"}),
+              "kineticWords": ("floatIn", {"dir": "up", "by": "word"}), "kineticChars": ("rise", {"by": "char"}),
+              "kineticWave": ("floatIn", {"dir": "up", "by": "char"}), "kineticSlide": ("flyIn", {"dir": "right", "by": "word"}),
               "typewriter": ("appear", {"by": "char"}), "decode": ("appear", {"by": "char"}), "maskRise": ("rise", {}),
               "blurIn": ("fade", {}), "draw": ("wipe", {"dir": "left"}), "countUp": ("fade", {}), "chartGrow": ("wipe", {"dir": "bottom"}),
               "arrive3d": ("flyIn", {"dir": "bottom"})}

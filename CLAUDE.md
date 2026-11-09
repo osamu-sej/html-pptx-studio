@@ -12,6 +12,7 @@
 ## PowerPoint出力（書き出し）
 
 - レイアウトの登場 `spin`・`swirl`・`flip` は PowerPoint 用に `layoutSpin`・`layoutSwirl`・`layoutFlip` のHTML効果として撮影し、タイトルの `zoom`・`flip` も `kineticZoom`・`kineticFlip` として撮影する。ひと言メッセージとクロージングの大文字は `@kinetic` を使う。これらの効果は再取り込みで編集を維持するため animate.js にも登録する。撮影を途中で止めた場合は未撮影の残件も `unfilmed` に数える。
+- `blur`・`zoom` のレイアウト登場も動画にし、タイトルの `words`・`chars`・`wave`・`slide` は文字単位で撮影する。これらの撮影は元のレイアウトを部品に変換したうえで行うため、PowerPoint 再生時の表示は別途実機で確認する。
 
 - 流れ：スタジオ（app.js の `exportPptx`）が `portableDeck()`（メディアを中に入れた資料）を `/api/export/pptx` に送る → `server/pptx.mjs` が見えない Chromium（`playwright-core`、ブラウザは `CHROME_PATH`）で `/export.html` を開き、`public/editor/pptx-collect.mjs` が1枚ずつ部品の一覧にする → PowerPoint にない部品・テーマの背景の飾り・読み取れないページはサーバーが撮影して図にする → `tools/pptx_export.py` が .pptx を書く。1回に1つずつ（`serially`）。
 - レイアウトのスライドは convert.mjs の `convert(index, { chrome: true, any: true })`（見出し・キーメッセージ・ページ下の行も文字に。表紙・章扉なども読む）、白紙のページは自分の部品と `chromeObjects(index)`。書き出し用の描画では「palt」を切る（PowerPoint にない字詰め。export.html）。半透明の色は透明度のまま、テーマの色に近い色だけテーマの色にそろえる。

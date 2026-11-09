@@ -79,8 +79,16 @@
       kf: () => [{ opacity: 0, transform: "rotate(-200deg) scale(.15)", filter: "blur(10px)" }, { opacity: 1, filter: "blur(0px)", offset: .55 }, { transform: "rotate(8deg) scale(1.04)", offset: .8 }, { opacity: 1, transform: "rotate(0deg) scale(1)", filter: "blur(0px)" }] },
     layoutFlip: { label: "縦にめくれて登場", out: "縦にめくれて退出", html: true, dur: 700, ease: "out", origin: "top",
       kf: () => [{ opacity: 0, transform: "perspective(1400px) rotateX(-75deg)" }, { opacity: 1, transform: "perspective(1400px) rotateX(0deg)" }] },
+    layoutBlur: { label: "ぼかしながら登場", out: "ぼかしながら退出", html: true, dur: 700, ease: "out", origin: "center",
+      kf: () => [{ opacity: 0, filter: "blur(18px)", transform: "scale(1.02)" }, { opacity: 1, filter: "blur(0px)", transform: "scale(1)" }] },
+    layoutZoom: { label: "ぼかしから迫る", out: "ぼかしながら遠ざかる", html: true, dur: 700, ease: "out", origin: "center",
+      kf: () => [{ opacity: 0, filter: "blur(8px)", transform: "scale(1.22)" }, { opacity: 1, filter: "blur(0px)", transform: "scale(1)" }] },
     kineticZoom: { label: "ことばが迫る", html: true, noExit: true, dur: 1500, ease: "linear", custom: (c) => kineticWords(c, "zoom") },
     kineticFlip: { label: "文字がめくれる", html: true, noExit: true, dur: 1600, ease: "linear", custom: (c) => kineticWords(c, "flip") },
+    kineticWords: { label: "ことばごとに浮かぶ", html: true, noExit: true, dur: 1700, ease: "linear", custom: (c) => kineticWords(c, "words") },
+    kineticChars: { label: "一文字ずつ弾む", html: true, noExit: true, dur: 1500, ease: "linear", custom: (c) => kineticWords(c, "chars") },
+    kineticWave: { label: "文字が波打つ", html: true, noExit: true, dur: 1800, ease: "linear", custom: (c) => kineticWords(c, "wave") },
+    kineticSlide: { label: "ことばが滑り込む", html: true, noExit: true, dur: 1500, ease: "linear", custom: (c) => kineticWords(c, "slide") },
     typewriter: { label: "タイプライター", out: "タイプライター（消す）", html: true, dur: 1600, ease: "linear", custom: (c, exit) => typewriter(c, exit) },
     decode: { label: "デコード", html: true, noExit: true, dur: 1400, ease: "linear", custom: (c) => decode(c) },
     maskRise: { label: "マスクから立ち上がる", out: "マスクへ沈む", html: true, dur: 900, ease: "out", custom: (c, exit) => maskRise(c, exit) },
@@ -615,16 +623,29 @@
     const out = [];
     for (const part of c.parts) {
       out.push(...holdVisible(c, part, false));
-      const list = units(part, style === "zoom" ? "word" : "char");
+      const word = ["zoom", "words", "slide"].includes(style);
+      const list = units(part, word ? "word" : "char");
       for (const [i, el] of list.entries()) {
-        const start = Math.min(.48, i * (style === "zoom" ? 110 : 50) / c.dur);
-        const end = Math.min(.99, start + (style === "zoom" ? 850 : 800) / c.dur);
-        const from = style === "zoom"
-          ? { opacity: 0, transform: "scale(2.4)", filter: "blur(10px)" }
-          : { opacity: 0, transform: "perspective(500px) rotateX(-100deg)", filter: "blur(0px)" };
+        const gap = { zoom: 110, flip: 50, words: 90, chars: 45, wave: 45, slide: 90 }[style];
+        const duration = { zoom: 850, flip: 800, words: 850, chars: 700, wave: 1000, slide: 800 }[style];
+        const start = Math.min(.48, i * gap / c.dur);
+        const end = Math.min(.99, start + duration / c.dur);
+        const from = {
+          zoom: { opacity: 0, transform: "scale(2.4)", filter: "blur(10px)" },
+          flip: { opacity: 0, transform: "perspective(500px) rotateX(-100deg)", filter: "blur(0px)" },
+          words: { opacity: 0, transform: "translateY(.35em)", filter: "blur(14px)" },
+          chars: { opacity: 0, transform: "translateY(.6em) scale(.4) rotate(-12deg)", filter: "blur(0px)" },
+          wave: { opacity: 0, transform: "translateY(.7em)", filter: "blur(0px)" },
+          slide: { opacity: 0, transform: "translateX(1.2em)", filter: "blur(6px)" },
+        }[style];
         const to = { opacity: 1, transform: "none", filter: "blur(0px)" };
+        const middle = style === "wave" ? [
+          { opacity: 1, transform: "translateY(-.22em)", filter: "blur(0px)", offset: start + (end - start) * .45 },
+          { opacity: 1, transform: "translateY(.06em)", filter: "blur(0px)", offset: start + (end - start) * .72 },
+        ] : [];
         out.push(...animateEl({ ...c, easing: "linear" }, el, [
           { ...from, offset: 0 }, { ...from, offset: Math.max(.0001, start), easing: "cubic-bezier(.2,.8,.2,1)" },
+          ...middle,
           { ...to, offset: Math.max(start + .0001, end) }, { ...to, offset: 1 },
         ]));
       }
