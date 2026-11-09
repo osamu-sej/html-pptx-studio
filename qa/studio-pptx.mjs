@@ -246,6 +246,91 @@ await step("a filmed layout title retains the HTML marker instead of a full-heig
   } finally { await exportPage.close(); }
 });
 
+await step("six kinetic styles match the HTML at five points, including punctuation and emoji", async () => {
+  const exportPage = await context.newPage();
+  try {
+    await exportPage.goto(`${base}/export.html`);
+    await exportPage.waitForFunction(() => window.__pptxReady);
+    for (const text of [null, "「生成AI」の進化、👩‍💻組織を変える！ 長い言葉のテスト — 革新を、ここから。"]) {
+      for (const style of ["words", "chars", "wave", "zoom", "flip", "slide"]) {
+        const result = await exportPage.evaluate(async ({ sample, text, style }) => {
+          const deck = structuredClone(sample);
+          deck.motion = { ...deck.motion, backdrop: "none", kinetic: "none", draw: "off" };
+          deck.slides = [{ ...deck.slides.find((s) => s.type === "statement"), kinetic: style, backdrop: "none", ...(text ? { text } : {}) }];
+          await window.__pptx.load(deck);
+          const stage = document.getElementById("stage");
+          stage.replaceChildren();
+          const live = window.SlideEngine.render(deck.slides[0], { deck, index: 0, mode: "present", assetBase: "/assets/" });
+          stage.append(live);
+          await document.fonts.ready;
+          window.SlideEngine.play(live);
+          const units = [...live.querySelectorAll(".hs-statement-text .hs-k")];
+          const animations = live.getAnimations({ subtree: true });
+          for (const animation of animations) animation.pause();
+          const delay = units[0]?.getAnimations()[0]?.effect.getTiming().delay || 0;
+          const read = (nodes) => nodes.map((n) => {
+            const cs = getComputedStyle(n);
+            const m = new DOMMatrixReadOnly(cs.transform === "none" ? undefined : cs.transform);
+            return { text: n.textContent, opacity: Number(cs.opacity), matrix: [m.m11, m.m12, m.m13, m.m14, m.m21, m.m22, m.m23, m.m24, m.m31, m.m32, m.m33, m.m34, m.m41, m.m42, m.m43, m.m44] };
+          });
+          const times = [0, 250, 600, 1000, 1400];
+          const original = times.map((t) => { for (const a of animations) a.currentTime = delay + t; return read(units); });
+          const slide = await window.__pptx.slide(0);
+          await window.__pptx.mountClip(0, slide.clips[0], null);
+          const filmed = [];
+          for (const t of times) {
+            await window.__pptx.seekClip(t);
+            filmed.push(read([...document.querySelectorAll(".hs-obj-tx .hs-u")]));
+          }
+          return { original, filmed };
+        }, { sample: allSample, text, style });
+        for (let i = 0; i < result.original.length; i += 1) {
+          const a = result.original[i], b = result.filmed[i];
+          assert(a.length > 0 && a.length === b.length, `${style}, time ${i}: different unit count ${a.length}/${b.length}`);
+          for (let j = 0; j < a.length; j += 1) {
+            assert(a[j].text === b[j].text && Math.abs(a[j].opacity - b[j].opacity) < 0.025 && a[j].matrix.every((v, k) => Math.abs(v - b[j].matrix[k]) < 0.05),
+              `${style}, time ${i}, unit ${j}: ${JSON.stringify([a[j], b[j]])}`);
+          }
+        }
+      }
+    }
+  } finally { await exportPage.close(); }
+});
+
+await step("long clips are complete and effects above the limit are reported", async () => {
+  await page.evaluate(() => {
+    const d = window.__hpptx.deck();
+    d.motion = { ...d.motion, backdrop: "none", kinetic: "none" };
+    const slide = (dur, repeat) => ({ type: "blank", title: "", hideTitle: true, backdrop: "none",
+      elements: [{ id: "longfx", kind: "shape", shape: "rect", x: 400, y: 300, w: 100, h: 100, fill: "#2451e6" }],
+      timeline: [{ id: "longanim", el: "longfx", cls: "in", fx: "blurIn", start: "click", dur, ...(repeat ? { repeat } : {}) }] });
+    d.slides = [slide(20100), slide(4000, 16)];
+  });
+  const responsePromise = page.waitForResponse((response) => /\/api\/export\/pptx\/jobs\/[^/]+\/file$/.test(response.url()), { timeout: 180_000 });
+  const file = await exportFile("export-long-motion.pptx", async () => {
+    await page.click("#pptxBtn");
+    const asked = await page.waitForSelector("#exportCheckDialog[open]", { timeout: 4000 }).then(() => true).catch(() => false);
+    if (asked) await page.click("#exportCheckGoBtn");
+  });
+  const response = await responsePromise;
+  const stats = JSON.parse(response.headers()["x-export-stats"] || "{}");
+  assert(stats.clips === 1 && stats.unfilmed === 1, `one complete clip and one explicitly unfilmed effect: ${JSON.stringify(stats)}`);
+  const duration = Number(execFileSync(python, ["-c", `
+import struct, sys
+from pptx import Presentation
+p = Presentation(sys.argv[1]); s = p.slides[0]
+sh = next(x for x in s.shapes if x.shape_type == 16)
+rid = sh._element.xpath('.//a:videoFile')[0].get('{http://schemas.openxmlformats.org/officeDocument/2006/relationships}link')
+b = s.part.related_part(rid).blob; i = b.find(b'mvhd')
+assert i >= 0
+version = b[i + 4]
+timescale = struct.unpack_from('>I', b, i + (24 if version else 16))[0]
+duration = struct.unpack_from('>Q' if version else '>I', b, i + (28 if version else 20))[0]
+print(duration / timescale)
+`, file]).toString());
+  assert(duration >= 20.1 && duration < 20.2, `the embedded MP4 must contain the whole 20.1-second effect: ${duration}s`);
+});
+
 await step("HTML kinetic text styles are filmed and survive reimport", async () => {
   await page.evaluate((original) => {
     const d = window.__hpptx.deck();

@@ -129,7 +129,7 @@ const dataUrl = (buffer) => `data:image/png;base64,${buffer.toString("base64")}`
 const FPS = 30;
 // A deck's worth of filming at most (each clip is a few dozen pictures).
 const MAX_CLIPS = 80;
-const MAX_CLIP_MS = 20_000;
+const MAX_CLIP_MS = 60_000;
 
 let ffmpegChecked = null;
 /** ffmpeg with an H.264 encoder (PowerPoint plays H.264 MP4 everywhere), or null. */
@@ -141,26 +141,20 @@ export function ffmpegBinary() {
   return ffmpegChecked || null;
 }
 
-/** Pictures (PNG buffers, one per frame at FPS) as an H.264 MP4 that PowerPoint plays. */
-async function encodeMp4(frames) {
+/** Pictures already written into a temporary directory as an H.264 MP4 that PowerPoint plays. */
+async function encodeMp4(dir) {
   const bin = ffmpegBinary();
-  const dir = await mkdtemp(join(tmpdir(), "hpptx-clip-"));
-  try {
-    for (const [i, frame] of frames.entries()) await writeFile(join(dir, `f${String(i).padStart(5, "0")}.png`), frame);
-    const out = join(dir, "clip.mp4");
-    await new Promise((resolve, reject) => {
-      const child = spawn(bin, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(FPS), "-i", join(dir, "f%05d.png"),
-        "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
-        "-movflags", "+faststart", "-an", out], { stdio: ["ignore", "ignore", "pipe"] });
-      let err = "";
-      child.stderr.on("data", (chunk) => { err += String(chunk); });
-      child.once("error", reject);
-      child.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `ffmpeg ${code}`))));
-    });
-    return await readFile(out);
-  } finally {
-    await rm(dir, { recursive: true, force: true }).catch(() => {});
-  }
+  const out = join(dir, "clip.mp4");
+  await new Promise((resolve, reject) => {
+    const child = spawn(bin, ["-hide_banner", "-loglevel", "error", "-y", "-framerate", String(FPS), "-i", join(dir, "f%05d.png"),
+      "-c:v", "libx264", "-preset", "veryfast", "-crf", "16", "-pix_fmt", "yuv420p", "-vf", "pad=ceil(iw/2)*2:ceil(ih/2)*2",
+      "-movflags", "+faststart", "-an", out], { stdio: ["ignore", "ignore", "pipe"] });
+    let err = "";
+    child.stderr.on("data", (chunk) => { err += String(chunk); });
+    child.once("error", reject);
+    child.once("exit", (code) => (code === 0 ? resolve() : reject(new Error(err.trim() || `ffmpeg ${code}`))));
+  });
+  return readFile(out);
 }
 
 // 背景の動き: LOOP_MS of it, and FADE_MS more that are blended into its start so the video loops without a jump.
@@ -220,17 +214,27 @@ async function recordLoop(page, i, check = () => {}) {
 async function recordClip(page, i, id, background, check = () => {}) {
   const info = await page.evaluate(([index, entryId, bg]) => window.__pptx.mountClip(index, entryId, bg), [i, id, background]);
   if (!info || !(info.box.w > 0 && info.box.h > 0)) return null;
-  const dur = Math.min(info.dur, MAX_CLIP_MS);
+  // Never silently truncate a long effect. If it exceeds the resource limit, return no clip: the caller records it
+  // as unfilmed and the user is told that the exported effect is only an approximation.
+  if (info.dur > MAX_CLIP_MS) return null;
+  const dur = info.dur;
   const count = Math.max(2, Math.ceil((dur / 1000) * FPS) + 1);
   const clip = { x: info.box.x, y: info.box.y, width: info.box.w, height: info.box.h };
-  const frames = [];
-  for (let k = 0; k < count; k += 1) {
-    check();
-    await page.evaluate((t) => window.__pptx.seekClip(t), Math.min(dur, (k * 1000) / FPS));
-    frames.push(await page.screenshot({ type: "png", clip, scale: "css" }));
+  const dir = await mkdtemp(join(tmpdir(), "hpptx-clip-"));
+  try {
+    let poster;
+    for (let k = 0; k < count; k += 1) {
+      check();
+      await page.evaluate((t) => window.__pptx.seekClip(t), Math.min(dur, (k * 1000) / FPS));
+      const frame = await page.screenshot({ type: "png", clip, scale: "css" });
+      if (k === 0) poster = frame;
+      await writeFile(join(dir, `f${String(k).padStart(5, "0")}.png`), frame);
+    }
+    const mp4 = await encodeMp4(dir);
+    return { src: `data:video/mp4;base64,${mp4.toString("base64")}`, poster: dataUrl(poster), box: info.box, dur, lasting: info.lasting, loop: info.loop };
+  } finally {
+    await rm(dir, { recursive: true, force: true }).catch(() => {});
   }
-  const mp4 = await encodeMp4(frames);
-  return { src: `data:video/mp4;base64,${mp4.toString("base64")}`, poster: dataUrl(frames[0]), box: info.box, dur, lasting: info.lasting, loop: info.loop };
 }
 
 /**
