@@ -6315,6 +6315,7 @@ async function exportPptx({ checked = false } = {}) {
     const notes = [
       stats.animations ? `アニメーション${stats.animations}件は PowerPoint のアニメーションに` : "",
       stats.clips ? `HTMLならではの動き${stats.clips}件はその部品だけの動画に` : "",
+      stats.backdrops ? `背景の動き${stats.backdrops}件はループ動画に` : "",
       stats.approximated ? `HTMLならではの動き${stats.approximated}件は近い PowerPoint の動きに` : "",
       stats.rasterized ? `PowerPoint にない部品${stats.rasterized}か所は図に` : "",
       stats.unfilmed ? `動画にできなかった動き${stats.unfilmed}件は PowerPoint の近い動き・静止画に置き換え` : "",
