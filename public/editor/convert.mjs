@@ -505,6 +505,9 @@ export function createConverter(app) {
       const next = { ...ctx };
       if (next.g == null && el.dataset?.g != null && el.dataset.g !== "") next.g = Number(el.dataset.g);
       if (next.item == null && el.dataset?.item) next.item = el.dataset.item;
+      // A statement/closing animates its large message, not its small title or eyebrow.
+      if (next.field == null && el.classList?.contains("hs-statement-text")) next.field = "@kinetic";
+      if (next.field == null && el.classList?.contains("hs-closing-message")) next.field = "@kinetic";
       // The title and the key message (read with the chrome): an animation on "@title" follows them.
       if (next.field == null && (el.dataset?.field === "title" || el.dataset?.field === "takeaway")) next.field = `@${el.dataset.field}`;
       // A figure the show counts up as it appears (data-count).

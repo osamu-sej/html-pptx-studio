@@ -36,7 +36,10 @@ EMPHASIS_IDS = {"fillColor": 1, "fontColor": 3, "growShrink": 6, "lineColor": 7,
                 "underline": 18, "darken": 24, "desaturate": 25, "pulse": 26, "colorPulse": 27, "brighten": 30, "teeter": 32,
                 "wave": 34, "blink": 35}
 # What only HTML draws → the nearest PowerPoint effect (until the part is recorded as a video).
-NEAREST_IN = {"typewriter": ("appear", {"by": "char"}), "decode": ("appear", {"by": "char"}), "maskRise": ("rise", {}),
+NEAREST_IN = {"layoutSpin": ("swivel", {"dir": "h"}), "layoutSwirl": ("pinwheel", {}),
+              "layoutFlip": ("swivel", {"dir": "v"}),
+              "kineticZoom": ("zoom", {"dir": "in"}), "kineticFlip": ("swivel", {"dir": "h"}),
+              "typewriter": ("appear", {"by": "char"}), "decode": ("appear", {"by": "char"}), "maskRise": ("rise", {}),
               "blurIn": ("fade", {}), "draw": ("wipe", {"dir": "left"}), "countUp": ("fade", {}), "chartGrow": ("wipe", {"dir": "bottom"}),
               "arrive3d": ("flyIn", {"dir": "bottom"})}
 NEAREST_EM = {"shine": "pulse", "ripple": "pulse", "marker": "colorPulse", "spotlight": "pulse", "turntable3d": "spin",

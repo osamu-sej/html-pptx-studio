@@ -6317,7 +6317,7 @@ async function exportPptx({ checked = false } = {}) {
       stats.clips ? `HTMLならではの動き${stats.clips}件はその部品だけの動画に` : "",
       stats.approximated ? `HTMLならではの動き${stats.approximated}件は近い PowerPoint の動きに` : "",
       stats.rasterized ? `PowerPoint にない部品${stats.rasterized}か所は図に` : "",
-      stats.unfilmed ? `動画にする動き${stats.unfilmed}件は、このサーバーの性能では撮れないため PowerPoint の近い動き・静止画に` : "",
+      stats.unfilmed ? `動画にできなかった動き${stats.unfilmed}件は PowerPoint の近い動き・静止画に置き換え` : "",
     ].filter(Boolean);
     const detail = notes.length ? `（${notes.join("、")}しました）` : "";
     toast(`PowerPoint に書き出しました${detail}${missing.length ? `。${missing.join("・")}枚目の写真・動画は見つからなかったので外しました` : ""}`);

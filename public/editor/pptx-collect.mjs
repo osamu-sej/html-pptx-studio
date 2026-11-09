@@ -7,6 +7,13 @@
 import { createConverter, convertedSlide } from "./convert.mjs";
 
 const E = window.SlideEngine;
+// Keep these effects aligned with the layout's CSS entrances in engine.css. They are also in animate.js so an
+// imported PowerPoint restores the editable animation instead of discarding an export-only effect name.
+const LAYOUT_FILMS = {
+  spin: { fx: "layoutSpin", dur: 1350 },
+  swirl: { fx: "layoutSwirl", dur: 1200 },
+  flip: { fx: "layoutFlip", dur: 700 },
+};
 const h = E.h;
 let deck = null;
 // The slide before (its objects as written), for 変形: PowerPoint pairs objects by name, the studio by morphPairs.
@@ -32,12 +39,12 @@ function htmlOnly(e) {
   return Boolean(def && (def.html || def.model));
 }
 
-// タイトルの動き (the layout's kinetic title) as an effect on the title's text box: the HTML ones are filmed, the
-// rest are PowerPoint's own word-by-word or letter-by-letter effects.
+// タイトルの動き (the layout's kinetic title) as an effect on its text box. HTML effects are filmed; remaining
+// effects use PowerPoint's word-by-word or letter-by-letter animations.
 const KINETIC_FX = {
   mask: { fx: "maskRise", dur: 900 }, type: { fx: "typewriter", dur: 1700 }, scramble: { fx: "decode", dur: 1300 },
   words: { fx: "floatIn", dir: "up", by: "word", dur: 600 }, chars: { fx: "rise", by: "char", dur: 500 }, wave: { fx: "floatIn", dir: "up", by: "char", dur: 500 },
-  zoom: { fx: "zoom", dir: "in", by: "word", dur: 500 }, flip: { fx: "swivel", dir: "h", by: "char", dur: 500 }, slide: { fx: "flyIn", dir: "right", by: "word", dur: 500 },
+  zoom: { fx: "kineticZoom", dur: 1500 }, flip: { fx: "kineticFlip", dur: 1600 }, slide: { fx: "flyIn", dir: "right", by: "word", dur: 500 },
 };
 let made = 0;
 const madeId = () => `ar${(made += 1).toString(36)}`;
@@ -171,6 +178,7 @@ window.__pptx = {
     let timeline = slide.timeline || [];
     let whole = false;
     let arrival = null;
+    let layoutEntries = new Set();
     if (slide.type === "blank") {
       objects = clone(slide.elements || []);
       const el = await mount(slide, index);
@@ -188,12 +196,18 @@ window.__pptx = {
       const made = convertedSlide(slide, result.objects, result.timeline);
       objects = clone(made.elements || []);
       timeline = made.timeline || [];
-      arrival = { title: result.fields?.["@title"] || null, counts: result.counts || [] };
+      const userEntries = new Set((slide.timeline || []).map((e) => e.id));
+      layoutEntries = new Set(timeline.filter((e) => !userEntries.has(e.id)).map((e) => e.id));
+      arrival = { title: result.fields?.["@kinetic"] || result.fields?.["@title"] || null, counts: result.counts || [] };
     }
     if (!objects.length && slide.type !== "blank") whole = true;
     if (deck.masterObjects?.length && !slide.hideMaster) objects = [...clone(deck.masterObjects).map((o) => ({ ...o, master: true })), ...objects];
     // The animations as the show plays them: known effects on parts that are on this slide, numbers in range.
     timeline = E.normalizeTimeline?.(timeline, { elements: objects }) ?? [];
+    const entrance = slide.entrance || deck.motion?.entrance;
+    const layoutFilm = LAYOUT_FILMS[entrance];
+    if (layoutFilm) timeline = timeline.map((e) => layoutEntries.has(e.id) && e.cls === "in" && e.fx !== "fade"
+      ? { ...e, fx: layoutFilm.fx, dur: layoutFilm.dur } : e);
     if (arrival) timeline = arrivalMotion(slide, timeline, arrival, objects);
     const transition = slide.transition || deck.transition || "fade";
     // 変形: the parts the studio carries from the slide before (written with one name on both, "!!…").
@@ -303,7 +317,8 @@ window.__pptx = {
     const kept = new Set();
     const anims = () => { for (const a of el.getAnimations ? el.getAnimations({ subtree: true }) : document.getAnimations()) kept.add(a); return [...kept]; };
     for (const a of anims()) a.pause();
-    const nodes = () => [...el.querySelectorAll(".hs-obj")].filter((n) => elements.some((o) => members(o) && o.id === n.dataset.el));
+    const nodes = () => [...el.querySelectorAll(".hs-obj")].filter((n) => elements.some((o) => members(o) && o.id === n.dataset.el))
+      .flatMap((n) => [n, ...n.querySelectorAll(".hs-u")]);
     clip = { el, anims, length };
     // The region it moves in: the part's box at a few moments, a little room around it, inside the slide.
     let box = null;

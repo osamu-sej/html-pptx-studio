@@ -73,6 +73,14 @@
     expand: { label: "エクスパンド", out: "コントラクト", dur: 800, ease: "out", origin: "center",
       kf: () => [{ opacity: 0, transform: "scale(0.6, 1)" }, { opacity: 1, transform: "scale(1, 1)" }] },
     // What only HTML can do (html: true; the gallery's 「HTMLならでは」). They draw their own frames (custom).
+    layoutSpin: { label: "3D回転で登場", out: "3D回転で退出", html: true, dur: 1350, ease: "out", origin: "center",
+      kf: () => [{ opacity: 0, transform: "perspective(1600px) rotateY(-540deg) scale(.55)" }, { opacity: 1, offset: .4 }, { opacity: 1, transform: "perspective(1600px) rotateY(0deg) scale(1)" }] },
+    layoutSwirl: { label: "渦巻きで登場", out: "渦巻きで退出", html: true, dur: 1200, ease: "out", origin: "center",
+      kf: () => [{ opacity: 0, transform: "rotate(-200deg) scale(.15)", filter: "blur(10px)" }, { opacity: 1, filter: "blur(0px)", offset: .55 }, { transform: "rotate(8deg) scale(1.04)", offset: .8 }, { opacity: 1, transform: "rotate(0deg) scale(1)", filter: "blur(0px)" }] },
+    layoutFlip: { label: "縦にめくれて登場", out: "縦にめくれて退出", html: true, dur: 700, ease: "out", origin: "top",
+      kf: () => [{ opacity: 0, transform: "perspective(1400px) rotateX(-75deg)" }, { opacity: 1, transform: "perspective(1400px) rotateX(0deg)" }] },
+    kineticZoom: { label: "ことばが迫る", html: true, noExit: true, dur: 1500, ease: "linear", custom: (c) => kineticWords(c, "zoom") },
+    kineticFlip: { label: "文字がめくれる", html: true, noExit: true, dur: 1600, ease: "linear", custom: (c) => kineticWords(c, "flip") },
     typewriter: { label: "タイプライター", out: "タイプライター（消す）", html: true, dur: 1600, ease: "linear", custom: (c, exit) => typewriter(c, exit) },
     decode: { label: "デコード", html: true, noExit: true, dur: 1400, ease: "linear", custom: (c) => decode(c) },
     maskRise: { label: "マスクから立ち上がる", out: "マスクへ沈む", html: true, dur: 900, ease: "out", custom: (c, exit) => maskRise(c, exit) },
@@ -601,6 +609,27 @@
   function holdVisible(c, part, exit) {
     return animateEl({ ...c, easing: "linear", iterations: 1, direction: "normal" }, part.fx,
       exit ? [{ visibility: "visible" }, { visibility: "visible", offset: 0.999 }, { visibility: "hidden" }] : [{ visibility: "visible" }, { visibility: "visible" }], { fill: c.fill });
+  }
+  // Kinetic titles are filmed as text units, including the blur/perspective unavailable in the native presets.
+  function kineticWords(c, style) {
+    const out = [];
+    for (const part of c.parts) {
+      out.push(...holdVisible(c, part, false));
+      const list = units(part, style === "zoom" ? "word" : "char");
+      for (const [i, el] of list.entries()) {
+        const start = Math.min(.48, i * (style === "zoom" ? 110 : 50) / c.dur);
+        const end = Math.min(.99, start + (style === "zoom" ? 850 : 800) / c.dur);
+        const from = style === "zoom"
+          ? { opacity: 0, transform: "scale(2.4)", filter: "blur(10px)" }
+          : { opacity: 0, transform: "perspective(500px) rotateX(-100deg)", filter: "blur(0px)" };
+        const to = { opacity: 1, transform: "none", filter: "blur(0px)" };
+        out.push(...animateEl({ ...c, easing: "linear" }, el, [
+          { ...from, offset: 0 }, { ...from, offset: Math.max(.0001, start), easing: "cubic-bezier(.2,.8,.2,1)" },
+          { ...to, offset: Math.max(start + .0001, end) }, { ...to, offset: 1 },
+        ]));
+      }
+    }
+    return out;
   }
   /**
    * An effect drawn frame by frame (letters changing, numbers counting): `clock` is the Web Animation that keeps
