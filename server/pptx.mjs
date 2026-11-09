@@ -300,7 +300,10 @@ export async function collectModel(deck, { base, timeoutMs = 240_000, lean = lea
       if (film && !filmUntil) filmUntil = Date.now() + FILM_BUDGET_MS;
       if (s.clips?.length && film && ffmpegBinary()) {
         for (const [n, id] of s.clips.entries()) {
-          if (filmed >= MAX_CLIPS || Date.now() - started > timeoutMs) break;
+          if (!film || filmed >= MAX_CLIPS || Date.now() - started > timeoutMs) {
+            skipped += s.clips.length - n;
+            break;
+          }
           progress({ stage: `${i + 1}枚目の動きを動画にしています（${n + 1}/${s.clips.length}）`, done: i, total: info.slides });
           const entry = s.timeline.find((e) => e.id === id);
           const got = entry && film ? await recordClip(page, i, id, s.background, filmCheck).catch((error) => { errors.push(`clip: ${error.message}`); return rethrow(error); }) : null;
