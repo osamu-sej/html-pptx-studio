@@ -188,7 +188,7 @@ await step("layout spin, swirl and flip are filmed while their objects remain ed
   const got = inspect(file);
   assert(got.slides.length === 6, `slide count ${got.slides.length}`);
   for (const [i, slide] of got.slides.slice(1, 4).entries()) {
-    assert(slide.videos >= 1, `slide ${i + 1}: HTML entrance was not filmed`);
+    assert(slide.videos >= 2, `slide ${i + 1}: the header and HTML entrance must both be filmed (got ${slide.videos})`);
     assert(slide.shapes.some((s) => s.kind === "text" && /動きの検証/.test(s.text)), `slide ${i + 1}: editable text missing`);
     assert(slide.valid, `slide ${i + 1}: invalid XML ${slide.errors}`);
   }

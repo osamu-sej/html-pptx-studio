@@ -67,6 +67,11 @@ function arrivalMotion(slide, timeline, { title, counts }, objects) {
     if (title.startsWith("grp:")) delete entry.by;
     lead.push(entry);
   }
+  // The layout header also plays the selected entrance when it has no kinetic title animation.
+  const entrance = LAYOUT_FILMS[slide.entrance || deck.motion?.entrance];
+  if (!kinetic && entrance && title && !out.some((e) => e.el === title)) {
+    lead.push({ id: madeId(), el: title, cls: "in", fx: entrance.fx, start: "with", dur: entrance.dur, delay: 0 });
+  }
   for (const id of counts) {
     const brings = out.find((e) => e.cls === "in" && (e.el === id || (e.el.startsWith("grp:") && membersOf(e.el).includes(id))));
     const count = { el: id, cls: "in", fx: "countUp", dur: 1100 };
