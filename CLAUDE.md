@@ -11,6 +11,7 @@
 
 ## PowerPoint出力（書き出し）
 
+- 長いHTML効果の動画は最大60秒まで30fpsで全体を撮り、各コマを一時ファイルに順に書く。60秒を超える効果は途中で切った動画を成功扱いにせず、撮影せず `unfilmed` に数えて代替の動きを知らせる。撮影の時間切れ・中止でも一時ファイルを削除する。`qa/studio-pptx.mjs` は20.1秒の実際のMP4の長さと、64秒の効果が未撮影と報告されることを検査する。
 - レイアウトの登場 `spin`・`swirl`・`flip` は PowerPoint 用に `layoutSpin`・`layoutSwirl`・`layoutFlip` のHTML効果として撮影し、タイトルの `zoom`・`flip` も `kineticZoom`・`kineticFlip` として撮影する。ひと言メッセージとクロージングの大文字は `@kinetic` を使う。これらの効果は再取り込みで編集を維持するため animate.js にも登録する。撮影を途中で止めた場合は未撮影の残件も `unfilmed` に数える。
 - `blur`・`zoom` のレイアウト登場も動画にし、タイトルの `words`・`chars`・`wave`・`slide` は文字単位で撮影する。これらの撮影は元のレイアウトを部品に変換したうえで行うため、PowerPoint 再生時の表示は別途実機で確認する。
 
