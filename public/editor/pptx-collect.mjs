@@ -13,6 +13,8 @@ const LAYOUT_FILMS = {
   spin: { fx: "layoutSpin", dur: 1350 },
   swirl: { fx: "layoutSwirl", dur: 1200 },
   flip: { fx: "layoutFlip", dur: 700 },
+  blur: { fx: "layoutBlur", dur: 700 },
+  zoom: { fx: "layoutZoom", dur: 700 },
 };
 const h = E.h;
 let deck = null;
@@ -43,8 +45,8 @@ function htmlOnly(e) {
 // effects use PowerPoint's word-by-word or letter-by-letter animations.
 const KINETIC_FX = {
   mask: { fx: "maskRise", dur: 900 }, type: { fx: "typewriter", dur: 1700 }, scramble: { fx: "decode", dur: 1300 },
-  words: { fx: "floatIn", dir: "up", by: "word", dur: 600 }, chars: { fx: "rise", by: "char", dur: 500 }, wave: { fx: "floatIn", dir: "up", by: "char", dur: 500 },
-  zoom: { fx: "kineticZoom", dur: 1500 }, flip: { fx: "kineticFlip", dur: 1600 }, slide: { fx: "flyIn", dir: "right", by: "word", dur: 500 },
+  words: { fx: "kineticWords", dur: 1700 }, chars: { fx: "kineticChars", dur: 1500 }, wave: { fx: "kineticWave", dur: 1800 },
+  zoom: { fx: "kineticZoom", dur: 1500 }, flip: { fx: "kineticFlip", dur: 1600 }, slide: { fx: "kineticSlide", dur: 1500 },
 };
 let made = 0;
 const madeId = () => `ar${(made += 1).toString(36)}`;

@@ -166,7 +166,7 @@ await step("a 白紙 page keeps its own objects (a shape with words, a table) an
   await shot("after-export");
 });
 
-await step("layout spin, swirl and flip are filmed while their objects remain editable", async () => {
+await step("HTML layout entrances are filmed while their objects remain editable", async () => {
   await page.evaluate((original) => {
     const d = window.__hpptx.deck();
     const sample = structuredClone(original.slides.find((s) => s.type === "agenda"));
@@ -178,7 +178,7 @@ await step("layout spin, swirl and flip are filmed while their objects remain ed
     const title = { ...structuredClone(original.slides[0]), kinetic: "flip", backdrop: "none" };
     const statement = { ...structuredClone(original.slides.find((s) => s.type === "statement")), kinetic: "zoom", backdrop: "none" };
     const closing = { ...structuredClone(original.slides.at(-1)), kinetic: "none", backdrop: "none" };
-    d.slides = [title, ...["spin", "swirl", "flip"].map((entrance, i) => ({ ...structuredClone(sample), title: `動き ${i + 1}`, entrance, ...(i === 1 ? { animation: "fade" } : {}) })), statement, closing];
+    d.slides = [title, ...["spin", "swirl", "flip", "blur", "zoom"].map((entrance, i) => ({ ...structuredClone(sample), title: `動き ${i + 1}`, entrance, ...(i === 1 ? { animation: "fade" } : {}) })), statement, closing];
   }, allSample);
   const file = await exportFile("export-layout-motion.pptx", async () => {
     await page.click("#pptxBtn");
@@ -186,21 +186,44 @@ await step("layout spin, swirl and flip are filmed while their objects remain ed
     if (asked) await page.click("#exportCheckGoBtn");
   });
   const got = inspect(file);
-  assert(got.slides.length === 6, `slide count ${got.slides.length}`);
-  for (const [i, slide] of got.slides.slice(1, 4).entries()) {
+  assert(got.slides.length === 8, `slide count ${got.slides.length}`);
+  for (const [i, slide] of got.slides.slice(1, 6).entries()) {
     assert(slide.videos >= 2, `slide ${i + 1}: the header and HTML entrance must both be filmed (got ${slide.videos})`);
     assert(slide.shapes.some((s) => s.kind === "text" && /動きの検証/.test(s.text)), `slide ${i + 1}: editable text missing`);
     assert(slide.valid, `slide ${i + 1}: invalid XML ${slide.errors}`);
   }
-  assert(got.slides[0].videos >= 1 && got.slides[4].videos >= 1, "kinetic title and statement must be filmed");
+  assert(got.slides[0].videos >= 1 && got.slides[6].videos >= 1, "kinetic title and statement must be filmed");
   const readBack = `import json, sys
 sys.path.insert(0, sys.argv[2])
 from pptx_exact import read_pptx_exact
 with open(sys.argv[1], 'rb') as f: deck = read_pptx_exact(f.read())
 print(json.dumps([[e.get('fx') for e in s.get('timeline', [])] for s in deck['slideData']]))`;
   const effects = JSON.parse(execFileSync(python, ["-c", readBack, file, join(root, "tools")]).toString());
-  assert(effects[1].includes("layoutSpin") && effects[2].includes("layoutSwirl") && effects[3].includes("layoutFlip"), `import restores motion: ${JSON.stringify(effects)}`);
-  assert(effects[0].includes("kineticFlip") && effects[4].includes("kineticZoom"), `import restores kinetic motion: ${JSON.stringify(effects)}`);
+  assert(["layoutSpin", "layoutSwirl", "layoutFlip", "layoutBlur", "layoutZoom"].every((fx, i) => effects[i + 1].includes(fx)), `import restores motion: ${JSON.stringify(effects)}`);
+  assert(effects[0].includes("kineticFlip") && effects[6].includes("kineticZoom"), `import restores kinetic motion: ${JSON.stringify(effects)}`);
+});
+
+await step("HTML kinetic text styles are filmed and survive reimport", async () => {
+  await page.evaluate((original) => {
+    const d = window.__hpptx.deck();
+    const title = { ...structuredClone(original.slides[0]), kinetic: "none", backdrop: "none" };
+    const closing = { ...structuredClone(original.slides.at(-1)), kinetic: "none", backdrop: "none" };
+    const statement = original.slides.find((s) => s.type === "statement");
+    d.motion = { ...d.motion, backdrop: "none", kinetic: "none" };
+    d.slides = [title, ...["words", "chars", "wave", "slide"].map((kinetic, i) => ({ ...structuredClone(statement), title: `文字 ${i + 1}`, kinetic, backdrop: "none" })), closing];
+  }, allSample);
+  const file = await exportFile("export-kinetic-motion.pptx", async () => {
+    await page.click("#pptxBtn");
+    const asked = await page.waitForSelector("#exportCheckDialog[open]", { timeout: 4000 }).then(() => true).catch(() => false);
+    if (asked) await page.click("#exportCheckGoBtn");
+  });
+  const got = inspect(file);
+  for (const [i, slide] of got.slides.slice(1, 5).entries()) {
+    assert(slide.videos >= 1 && slide.valid, `kinetic ${i + 1}: video or valid XML missing`);
+  }
+  const readBack = `import json, sys\nsys.path.insert(0, sys.argv[2])\nfrom pptx_exact import read_pptx_exact\nwith open(sys.argv[1], 'rb') as f: deck = read_pptx_exact(f.read())\nprint(json.dumps([[e.get('fx') for e in s.get('timeline', [])] for s in deck['slideData']]))`;
+  const effects = JSON.parse(execFileSync(python, ["-c", readBack, file, join(root, "tools")]).toString());
+  assert(["kineticWords", "kineticChars", "kineticWave", "kineticSlide"].every((fx, i) => effects[i + 1].includes(fx)), `kinetic styles on import: ${JSON.stringify(effects)}`);
 });
 
 console.log(errors.length ? `errors:\n${errors.join("\n")}` : "no errors");
