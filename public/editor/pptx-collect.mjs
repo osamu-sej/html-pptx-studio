@@ -48,6 +48,11 @@ const KINETIC_FX = {
   words: { fx: "kineticWords", dur: 1700 }, chars: { fx: "kineticChars", dur: 1500 }, wave: { fx: "kineticWave", dur: 1800 },
   zoom: { fx: "kineticZoom", dur: 1500 }, flip: { fx: "kineticFlip", dur: 1600 }, slide: { fx: "kineticSlide", dur: 1500 },
 };
+const KINETIC_TARGET = ".hs-cover-title, .hs-section-title, .hs-hero-title, .hs-statement-text, .hs-closing-message, .hs-closing-title, .hs-frame > .hs-head > .hs-title, .hs-frame > .hs-head > .hs-sej-titlebar > .hs-title, .hs-frame > .hs-sej-titlebar > .hs-title";
+const KINETIC_TIMING = {
+  words: [1000, 90, 850], chars: [1100, 45, 700], wave: [1100, 45, 1000],
+  zoom: [1000, 110, 850], flip: [1100, 50, 800], slide: [900, 90, 800],
+};
 let made = 0;
 const madeId = () => `ar${(made += 1).toString(36)}`;
 
@@ -56,7 +61,7 @@ const madeId = () => `ar${(made += 1).toString(36)}`;
  * (unless the slide's own animations move the title) and the figures that count up — each counts as its item
  * comes in (filmed with it), or as the slide arrives when nothing brings it in.
  */
-function arrivalMotion(slide, timeline, { title, counts }, objects) {
+function arrivalMotion(slide, timeline, { title, counts, kineticTiming }, objects) {
   const out = [...timeline];
   const membersOf = (key) => objects.filter((o) => o.group === key.slice(4)).map((o) => o.id);
   const lead = [];
@@ -64,7 +69,7 @@ function arrivalMotion(slide, timeline, { title, counts }, objects) {
   const kind = kinetic && KINETIC_FX[kinetic];
   if (kind && title && !out.some((e) => e.el === title)) {
     const { fx, dur, ...rest } = kind;
-    const entry = { id: madeId(), el: title, cls: "in", fx, start: "with", dur, delay: 120, ...rest };
+    const entry = { id: madeId(), el: title, cls: "in", fx, start: "with", dur: kineticTiming?.dur ?? dur, delay: kineticTiming?.delay ?? 120, ...rest };
     // Word and letter effects are PowerPoint's own on a text box (a group of pieces moves as one).
     if (title.startsWith("grp:")) delete entry.by;
     lead.push(entry);
@@ -215,7 +220,21 @@ window.__pptx = {
     const layoutFilm = LAYOUT_FILMS[entrance];
     if (layoutFilm) timeline = timeline.map((e) => layoutEntries.has(e.id) && e.cls === "in"
       ? { ...e, fx: layoutFilm.fx, dur: layoutFilm.dur } : e);
-    if (arrival) timeline = arrivalMotion(slide, timeline, arrival, objects);
+    if (arrival) {
+      const kinetic = E.kineticOf?.(slide, slide.type, deck.motion || {});
+      const timing = KINETIC_TIMING[kinetic];
+      if (arrival.title && timing && E.splitKinetic) {
+        const original = await mount(slide, index);
+        const title = original.querySelector(KINETIC_TARGET);
+        if (title) {
+          const n = E.splitKinetic(title, kinetic);
+          const gap = Math.round(Math.min(timing[1], timing[0] / Math.max(1, n)));
+          const d = parseFloat(title.style.getPropertyValue("--d")) || 0;
+          arrival.kineticTiming = { dur: Math.max(1, (n - 1) * gap + timing[2]), delay: Math.round(title.classList.contains("hs-enter") ? d * 90 + 120 : 60) };
+        }
+      }
+      timeline = arrivalMotion(slide, timeline, arrival, objects);
+    }
     const transition = slide.transition || deck.transition || "fade";
     // 変形: the parts the studio carries from the slide before (written with one name on both, "!!…").
     const morph = transition === "morph" && previous?.index === index - 1 && E.morphPairs
@@ -224,7 +243,7 @@ window.__pptx = {
     // What only HTML can draw (a typewriter, a number counting, a shine…): each such effect is recorded as a video
     // of its part alone (recordClip), played in PowerPoint at the same moment.
     const clips = timeline.filter((e) => htmlOnly(e)).map((e) => e.id);
-    if (clips.length) forClips.set(index, { objects: clone(objects), timeline: clone(timeline) });
+    if (clips.length) forClips.set(index, { objects: clone(objects), timeline: clone(timeline), layoutTitle: arrival?.title });
     const rasters = [];
     for (const o of objects) {
       if (!NATIVE.has(o.kind)) rasters.push(o.id);
@@ -308,17 +327,56 @@ window.__pptx = {
     const one = { ...entry, start: "click", delay: 0, trigger: undefined, after: undefined, sound: undefined, with: undefined, ...(indefinite ? { repeat: undefined } : {}) };
     // What moves with it (a figure counting up as its item comes in) is filmed in the same video.
     const company = (entry.with || []).map((w, k) => ({ ...w, id: `${entry.id}w${k}`, start: "with", delay: 0 }));
+    // The converted text is editable in PowerPoint, but a PowerPoint text highlight fills the whole line. The
+    // original layout can instead draw a partial-height marker, an underline or a glow. Retain the original CSS
+    // while filming its title; do not change real highlights on a user-created text box.
+    let emphasis = [];
+    if (entry.el === saved.layoutTitle && !entry.el.startsWith("grp:")) {
+      const original = await mount(deck.slides[index], index, { mode: "present" });
+      const title = original.querySelector(KINETIC_TARGET);
+      const marks = [...(title?.querySelectorAll(".hs-em") || [])];
+      emphasis = marks.map((node) => {
+        const cs = getComputedStyle(node);
+        return { text: node.textContent, background: cs.background, borderBottom: cs.borderBottom, textShadow: cs.textShadow };
+      });
+      // The marker itself may draw in after the letters. Copy its CSS animations as well as its final appearance.
+      if (marks.length && original.dataset.draw === "on" && E.play) {
+        E.play(original);
+        await wait();
+        marks.forEach((node, i) => {
+          emphasis[i].animations = node.getAnimations().filter((a) => a.effect?.target === node && /^hs-(marker|uline|glow)-/.test(a.animationName || ""))
+            .map((a) => ({ frames: a.effect.getKeyframes(), timing: a.effect.getTiming() }));
+        });
+      }
+    }
     const slide = { type: "blank", title: "", hideTitle: true, hideMaster: true, elements, timeline: [one, ...company], ...(background ? { background } : {}) };
     stage.replaceChildren();
     stage.classList.remove("is-clear");
     const el = E.render(slide, { deck, index, mode: "present", assetBase: "/assets/" });
     stage.append(el);
+    const target = [...el.querySelectorAll(".hs-obj")].find((node) => node.dataset.el === entry.el);
+    const spans = [...(target?.querySelectorAll(".hs-obj-tx span") || [])];
+    let markEnd = 0;
+    for (const mark of emphasis) {
+      const at = spans.findIndex((candidate) => candidate.textContent === mark.text);
+      const node = at < 0 ? null : spans.splice(at, 1)[0];
+      if (node) {
+        Object.assign(node.style, { background: mark.background, borderBottom: mark.borderBottom, textShadow: mark.textShadow });
+        for (const { frames, timing } of mark.animations || []) {
+          const delay = Math.max(0, (Number(timing.delay) || 0) - (Number(entry.delay) || 0));
+          const duration = Number(timing.duration);
+          if (!Number.isFinite(duration)) continue;
+          node.animate(frames, { ...timing, delay });
+          markEnd = Math.max(markEnd, delay + duration * (Number(timing.iterations) || 1));
+        }
+      }
+    }
     await document.fonts?.ready;
     await wait();
     E.mountModels?.(el);
     E.repaintCharts?.();
     E.animStart?.(el, 0);
-    const length = E.animStep?.(el, 1) || Number(entry.dur) || 500;
+    const length = Math.max(E.animStep?.(el, 1) || Number(entry.dur) || 500, markEnd);
     // Every animation the effect started, kept from the start: one that does not hold its end (fill "none") leaves
     // the page's list once it is seeked past its end, and must still be found when seeking back.
     const kept = new Set();
