@@ -178,7 +178,7 @@ await step("layout spin, swirl and flip are filmed while their objects remain ed
     const title = { ...structuredClone(original.slides[0]), kinetic: "flip", backdrop: "none" };
     const statement = { ...structuredClone(original.slides.find((s) => s.type === "statement")), kinetic: "zoom", backdrop: "none" };
     const closing = { ...structuredClone(original.slides.at(-1)), kinetic: "none", backdrop: "none" };
-    d.slides = [title, ...["spin", "swirl", "flip"].map((entrance, i) => ({ ...structuredClone(sample), title: `動き ${i + 1}`, entrance })), statement, closing];
+    d.slides = [title, ...["spin", "swirl", "flip"].map((entrance, i) => ({ ...structuredClone(sample), title: `動き ${i + 1}`, entrance, ...(i === 1 ? { animation: "fade" } : {}) })), statement, closing];
   }, allSample);
   const file = await exportFile("export-layout-motion.pptx", async () => {
     await page.click("#pptxBtn");

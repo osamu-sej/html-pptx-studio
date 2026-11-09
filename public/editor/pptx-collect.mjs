@@ -206,7 +206,7 @@ window.__pptx = {
     timeline = E.normalizeTimeline?.(timeline, { elements: objects }) ?? [];
     const entrance = slide.entrance || deck.motion?.entrance;
     const layoutFilm = LAYOUT_FILMS[entrance];
-    if (layoutFilm) timeline = timeline.map((e) => layoutEntries.has(e.id) && e.cls === "in" && e.fx !== "fade"
+    if (layoutFilm) timeline = timeline.map((e) => layoutEntries.has(e.id) && e.cls === "in"
       ? { ...e, fx: layoutFilm.fx, dur: layoutFilm.dur } : e);
     if (arrival) timeline = arrivalMotion(slide, timeline, arrival, objects);
     const transition = slide.transition || deck.transition || "fade";
