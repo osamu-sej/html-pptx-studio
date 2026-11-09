@@ -523,7 +523,7 @@
   }
 
   /** Text pieces of a part for "by word / character / paragraph" (split once, kept for later animations). */
-  function units(part, by) {
+  function units(part, by, kineticMode) {
     if (by === "item") return [...part.node.querySelectorAll(".hs-sa-step:not(.hs-sa-fixed)")];
     const host = part.object ? part.node.querySelector(".hs-obj-tx") : part.node;
     if (!host) return [];
@@ -539,7 +539,9 @@
       while (walker.nextNode()) if (walker.currentNode.nodeValue.trim()) texts.push(walker.currentNode);
       for (const node of texts) {
         if (node.parentElement?.classList.contains("hs-u")) continue;
-        const pieces = by === "char" ? [...node.nodeValue] : wordsOf(node.nodeValue);
+        const pieces = kineticMode && E.kineticUnitsOf
+          ? E.kineticUnitsOf(node.nodeValue, kineticMode).map((unit) => typeof unit === "string" ? unit : unit.space)
+          : by === "char" ? [...node.nodeValue] : wordsOf(node.nodeValue);
         const frag = host.ownerDocument.createDocumentFragment();
         for (const piece of pieces) {
           if (!piece.trim()) { frag.append(piece); continue; }
@@ -624,12 +626,17 @@
     for (const part of c.parts) {
       out.push(...holdVisible(c, part, false));
       const word = ["zoom", "words", "slide"].includes(style);
-      const list = units(part, word ? "word" : "char");
+      const list = units(part, word ? "word" : "char", style);
+      const [budget, cap, duration, easing] = {
+        zoom: [1000, 110, 850, "cubic-bezier(.16,1,.3,1)"], flip: [1100, 50, 800, "cubic-bezier(.3,1.4,.5,1)"],
+        words: [1000, 90, 850, "cubic-bezier(.16,1,.3,1)"], chars: [1100, 45, 700, "cubic-bezier(.34,1.56,.64,1)"],
+        wave: [1100, 45, 1000, "ease-out"], slide: [900, 90, 800, "cubic-bezier(.16,1,.3,1)"],
+      }[style];
+      const gap = Math.round(Math.min(cap, budget / Math.max(1, list.length)));
+      const total = Math.max(1, gap * Math.max(0, list.length - 1) + duration);
       for (const [i, el] of list.entries()) {
-        const gap = { zoom: 110, flip: 50, words: 90, chars: 45, wave: 45, slide: 90 }[style];
-        const duration = { zoom: 850, flip: 800, words: 850, chars: 700, wave: 1000, slide: 800 }[style];
-        const start = Math.min(.48, i * gap / c.dur);
-        const end = Math.min(.99, start + duration / c.dur);
+        const start = i * gap / total;
+        const end = (i * gap + duration) / total;
         const from = {
           zoom: { opacity: 0, transform: "scale(2.4)", filter: "blur(10px)" },
           flip: { opacity: 0, transform: "perspective(500px) rotateX(-100deg)", filter: "blur(0px)" },
@@ -642,11 +649,12 @@
         const middle = style === "wave" ? [
           { opacity: 1, transform: "translateY(-.22em)", filter: "blur(0px)", offset: start + (end - start) * .45 },
           { opacity: 1, transform: "translateY(.06em)", filter: "blur(0px)", offset: start + (end - start) * .72 },
-        ] : [];
+        ] : ["chars", "flip"].includes(style) ? [{ opacity: 1, offset: start + (end - start) * (style === "chars" ? .45 : .55) }] : [];
+        if (style === "flip") el.style.transformOrigin = "50% 80%";
         out.push(...animateEl({ ...c, easing: "linear" }, el, [
-          { ...from, offset: 0 }, { ...from, offset: Math.max(.0001, start), easing: "cubic-bezier(.2,.8,.2,1)" },
-          ...middle,
-          { ...to, offset: Math.max(start + .0001, end) }, { ...to, offset: 1 },
+          { ...from, offset: 0 }, { ...from, offset: start, easing },
+          ...middle.map((frame) => ({ ...frame, easing })),
+          { ...to, offset: end }, { ...to, offset: 1 },
         ]));
       }
     }

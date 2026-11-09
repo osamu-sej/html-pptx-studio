@@ -2020,5 +2020,5 @@ html,body{margin:0;height:100%;background:#0d1017;color:#e8ecf4;font-family:"Not
   /** How long a transition takes when the slide does not say (ms). */
   const transitionMs = (type) => (type === "none" ? 0 : TRANSITION_MS[type] ?? 620);
 
-  Object.assign(E, { play, reveal, stepsOf, countUp, activate, playMedia, stopMedia, mountLottie, stopLottie, splitKinetic, createPlayer, engineCss, transitionPreview, transitionMs, morphIn, playSound, stopSounds, renderSound });
+  Object.assign(E, { play, reveal, stepsOf, countUp, activate, playMedia, stopMedia, mountLottie, stopLottie, splitKinetic, kineticUnitsOf: unitsOf, createPlayer, engineCss, transitionPreview, transitionMs, morphIn, playSound, stopSounds, renderSound });
 })(typeof window !== "undefined" ? window : globalThis);

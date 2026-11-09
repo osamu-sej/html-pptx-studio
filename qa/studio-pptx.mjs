@@ -203,6 +203,49 @@ print(json.dumps([[e.get('fx') for e in s.get('timeline', [])] for s in deck['sl
   assert(effects[0].includes("kineticFlip") && effects[6].includes("kineticZoom"), `import restores kinetic motion: ${JSON.stringify(effects)}`);
 });
 
+await step("a filmed layout title retains the HTML marker instead of a full-height highlight", async () => {
+  const source = structuredClone(allSample);
+  source.motion = { ...source.motion, backdrop: "none", kinetic: "none" };
+  source.slides = [{ ...source.slides.find((s) => s.type === "statement"), kinetic: "zoom", backdrop: "none" }];
+  const exportPage = await context.newPage({ viewport: { width: 1920, height: 1080 } });
+  try {
+    await exportPage.goto(`${base}/export.html`);
+    await exportPage.waitForFunction(() => window.__pptxReady);
+    const result = await exportPage.evaluate(async (deck) => {
+      await window.__pptx.load(deck);
+      await window.__pptx.mountWhole(0);
+      const before = [...document.querySelectorAll(".hs-statement-text .hs-em")].map((n) => [n.textContent, getComputedStyle(n).backgroundImage]);
+      const title = document.querySelector(".hs-statement-text");
+      const units = window.SlideEngine.splitKinetic(title, "zoom");
+      const expectedDuration = (units - 1) * Math.round(Math.min(110, 1000 / units)) + 850;
+      const stage = document.getElementById("stage");
+      stage.replaceChildren();
+      const live = window.SlideEngine.render(deck.slides[0], { deck, index: 0, mode: "present", assetBase: "/assets/" });
+      stage.append(live);
+      window.SlideEngine.play(live);
+      const originalUnits = [...live.querySelectorAll(".hs-statement-text .hs-k")];
+      const delay = Number(originalUnits[0].getAnimations()[0].effect.getTiming().delay);
+      for (const a of live.getAnimations({ subtree: true })) { a.pause(); a.currentTime = delay + 600; }
+      const originalOpacity = originalUnits.map((n) => Number(getComputedStyle(n).opacity));
+      const slide = await window.__pptx.slide(0);
+      const film = await window.__pptx.mountClip(0, slide.clips[0], null);
+      await window.__pptx.seekClip(0);
+      const after = [...document.querySelectorAll(".hs-obj-tx span")].filter((n) => before.some(([text]) => n.textContent === text))
+        .map((n) => [n.textContent, getComputedStyle(n).backgroundImage]);
+      const startSize = getComputedStyle([...document.querySelectorAll(".hs-obj-tx span")].find((n) => n.textContent === before[0][0])).backgroundSize;
+      const filmedUnits = document.querySelectorAll('.hs-obj-tx .hs-u[data-u="word"]').length;
+      await window.__pptx.seekClip(600);
+      const filmedOpacity = [...document.querySelectorAll('.hs-obj-tx .hs-u[data-u="word"]')].map((n) => Number(getComputedStyle(n).opacity));
+      return { before, after, units, filmedUnits, originalOpacity, filmedOpacity, startSize, filmDuration: film.dur, expectedDuration, actualDuration: slide.timeline.find((e) => e.id === slide.clips[0])?.dur };
+    }, source);
+    assert(result.before.length > 0 && result.before.every(([text, image]) => image.includes("gradient") && result.after.some(([t, bg]) => t === text && bg === image)), JSON.stringify(result));
+    assert(result.actualDuration === result.expectedDuration, `HTML timing: ${JSON.stringify(result)}`);
+    assert(result.units === result.filmedUnits, `HTML word segmentation: ${JSON.stringify(result)}`);
+    assert(result.originalOpacity.every((v, i) => Math.abs(v - result.filmedOpacity[i]) < 0.025), `HTML motion at 600ms: ${JSON.stringify(result)}`);
+    assert(result.startSize.startsWith("0%") && result.filmDuration > result.actualDuration, `marker draws after the words: ${JSON.stringify(result)}`);
+  } finally { await exportPage.close(); }
+});
+
 await step("HTML kinetic text styles are filmed and survive reimport", async () => {
   await page.evaluate((original) => {
     const d = window.__hpptx.deck();
